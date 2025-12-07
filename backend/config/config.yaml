@@ -1,0 +1,14 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+database:
+  driver: "sqlite3"
+  dsn: "data/control_page.db"
+
+jwt:
+  secret: "your-super-secret-key-change-in-production"
+  expiration: 24h
+
+binance:
+  websocket_url: "wss://stream.binance.com:9443/ws"

@@ -1,0 +1,139 @@
+package http
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+
+	"control_page/internal/adaptor"
+	"control_page/internal/model/enum"
+)
+
+type Router struct {
+	authHandler          *AuthHandler
+	klineHandler         *KlineHandler
+	rbacHandler          *RBACHandler
+	apiKeyHandler        *APIKeyHandler
+	wsManager            *BinanceStreamManager
+	tradingStreamManager *TradingStreamManager
+	authMiddleware       *AuthMiddleware
+}
+
+func NewRouter(
+	authUseCase adaptor.AuthUseCase,
+	klineUseCase adaptor.KlineUseCase,
+	roleUseCase adaptor.RoleUseCase,
+	userUseCase adaptor.UserUseCase,
+	apiKeyUseCase adaptor.APIKeyUseCase,
+	apiKeyRepo adaptor.APIKeyRepository,
+	binanceURL string,
+) *Router {
+	return &Router{
+		authHandler:          NewAuthHandler(authUseCase),
+		klineHandler:         NewKlineHandler(klineUseCase),
+		rbacHandler:          NewRBACHandler(roleUseCase, userUseCase),
+		apiKeyHandler:        NewAPIKeyHandler(apiKeyUseCase),
+		wsManager:            NewBinanceStreamManager(binanceURL),
+		tradingStreamManager: NewTradingStreamManager(apiKeyUseCase, authUseCase, apiKeyRepo),
+		authMiddleware:       NewAuthMiddleware(authUseCase),
+	}
+}
+
+func (rt *Router) Setup() *chi.Mux {
+	r := chi.NewRouter()
+
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.RequestID)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	// Health check
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	// API routes
+	r.Route("/api", func(r chi.Router) {
+		// Public routes
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", rt.authHandler.Register)
+			r.Post("/activate", rt.authHandler.ActivateAccount)
+			r.Post("/login", rt.authHandler.Login)
+			r.Post("/verify-totp", rt.authHandler.VerifyTOTP)
+		})
+
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			r.Use(rt.authMiddleware.Authenticate)
+
+			r.Get("/auth/me", rt.authHandler.Me)
+			r.Post("/auth/change-password", rt.authHandler.ChangePassword)
+
+			// 2FA rebind routes
+			r.Post("/auth/totp/rebind", rt.authHandler.SetupTOTPRebind)
+			r.Post("/auth/totp/rebind/confirm", rt.authHandler.ConfirmTOTPRebind)
+			r.Post("/auth/totp/rebind/cancel", rt.authHandler.CancelTOTPRebind)
+
+			// Kline routes (require view:kline permission)
+			r.Route("/kline", func(r chi.Router) {
+				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionViewKline))
+				r.Get("/symbols", rt.klineHandler.GetSymbols)
+				r.Get("/intervals", rt.klineHandler.GetIntervals)
+			})
+
+			// RBAC routes (require manage:roles permission)
+			r.Route("/rbac", func(r chi.Router) {
+				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageRoles))
+
+				// Roles
+				r.Get("/roles", rt.rbacHandler.ListRoles)
+				r.Post("/roles", rt.rbacHandler.CreateRole)
+				r.Get("/roles/{id}", rt.rbacHandler.GetRole)
+				r.Put("/roles/{id}", rt.rbacHandler.UpdateRole)
+				r.Delete("/roles/{id}", rt.rbacHandler.DeleteRole)
+				r.Put("/roles/{id}/permissions", rt.rbacHandler.SetRolePermissions)
+
+				// Permissions
+				r.Get("/permissions", rt.rbacHandler.GetAllPermissions)
+
+				// Users
+				r.Get("/users", rt.rbacHandler.ListUsers)
+				r.Get("/users/{id}", rt.rbacHandler.GetUser)
+				r.Post("/users/{id}/roles", rt.rbacHandler.AssignRole)
+				r.Delete("/users/{id}/roles/{roleId}", rt.rbacHandler.RemoveRole)
+			})
+
+			// API Keys routes (require manage:api_keys permission)
+			r.Route("/api-keys", func(r chi.Router) {
+				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageAPIKeys))
+				r.Get("/", rt.apiKeyHandler.List)
+				r.Post("/", rt.apiKeyHandler.Create)
+				r.Get("/platforms", rt.apiKeyHandler.GetPlatforms)
+				r.Get("/{id}", rt.apiKeyHandler.Get)
+				r.Put("/{id}", rt.apiKeyHandler.Update)
+				r.Delete("/{id}", rt.apiKeyHandler.Delete)
+			})
+		})
+	})
+
+	// WebSocket routes (handled separately, auth via query param)
+	r.Get("/ws/kline", rt.wsManager.HandleWebSocket)
+	r.Get("/ws/trading", rt.tradingStreamManager.HandleWebSocket)
+
+	return r
+}
+
+func (rt *Router) Close() {
+	rt.wsManager.Close()
+	rt.tradingStreamManager.Close()
+}
