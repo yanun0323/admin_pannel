@@ -16,6 +16,9 @@ type Router struct {
 	klineHandler         *KlineHandler
 	rbacHandler          *RBACHandler
 	apiKeyHandler        *APIKeyHandler
+	switcherHandler      *SwitcherHandler
+	settingHandler       *SettingHandler
+	btccProxyHandler     *BTCCProxyHandler
 	wsManager            *BinanceStreamManager
 	tradingStreamManager *TradingStreamManager
 	authMiddleware       *AuthMiddleware
@@ -28,6 +31,8 @@ func NewRouter(
 	userUseCase adaptor.UserUseCase,
 	apiKeyUseCase adaptor.APIKeyUseCase,
 	apiKeyRepo adaptor.APIKeyRepository,
+	switcherUseCase adaptor.SwitcherUseCase,
+	settingUseCase adaptor.SettingUseCase,
 	binanceURL string,
 ) *Router {
 	return &Router{
@@ -35,6 +40,9 @@ func NewRouter(
 		klineHandler:         NewKlineHandler(klineUseCase),
 		rbacHandler:          NewRBACHandler(roleUseCase, userUseCase),
 		apiKeyHandler:        NewAPIKeyHandler(apiKeyUseCase),
+		switcherHandler:      NewSwitcherHandler(switcherUseCase),
+		settingHandler:       NewSettingHandler(settingUseCase),
+		btccProxyHandler:     NewBTCCProxyHandler(),
 		wsManager:            NewBinanceStreamManager(binanceURL),
 		tradingStreamManager: NewTradingStreamManager(apiKeyUseCase, authUseCase, apiKeyRepo),
 		authMiddleware:       NewAuthMiddleware(authUseCase),
@@ -49,7 +57,7 @@ func (rt *Router) Setup() *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8888"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
@@ -91,6 +99,12 @@ func (rt *Router) Setup() *chi.Mux {
 				r.Get("/intervals", rt.klineHandler.GetIntervals)
 			})
 
+			// BTCC proxy routes (require view:kline permission)
+			r.Route("/btcc", func(r chi.Router) {
+				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionViewKline))
+				r.Get("/markets", rt.btccProxyHandler.GetMarketList)
+			})
+
 			// RBAC routes (require manage:roles permission)
 			r.Route("/rbac", func(r chi.Router) {
 				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageRoles))
@@ -113,15 +127,59 @@ func (rt *Router) Setup() *chi.Mux {
 				r.Delete("/users/{id}/roles/{roleId}", rt.rbacHandler.RemoveRole)
 			})
 
-			// API Keys routes (require manage:api_keys permission)
+			// API Keys routes
 			r.Route("/api-keys", func(r chi.Router) {
-				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageAPIKeys))
-				r.Get("/", rt.apiKeyHandler.List)
-				r.Post("/", rt.apiKeyHandler.Create)
-				r.Get("/platforms", rt.apiKeyHandler.GetPlatforms)
-				r.Get("/{id}", rt.apiKeyHandler.Get)
-				r.Put("/{id}", rt.apiKeyHandler.Update)
-				r.Delete("/{id}", rt.apiKeyHandler.Delete)
+				// View routes (require view:api_keys permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionViewAPIKeys))
+					r.Get("/", rt.apiKeyHandler.List)
+					r.Get("/platforms", rt.apiKeyHandler.GetPlatforms)
+					r.Get("/{id}", rt.apiKeyHandler.Get)
+				})
+				// Manage routes (require manage:api_keys permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageAPIKeys))
+					r.Post("/", rt.apiKeyHandler.Create)
+					r.Put("/{id}", rt.apiKeyHandler.Update)
+					r.Delete("/{id}", rt.apiKeyHandler.Delete)
+				})
+			})
+
+			// Switcher routes
+			r.Route("/switchers", func(r chi.Router) {
+				// View routes (require view:settings permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionViewSettings))
+					r.Get("/", rt.switcherHandler.List)
+					r.Get("/{id}", rt.switcherHandler.Get)
+				})
+				// Manage routes (require manage:settings permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageSettings))
+					r.Post("/", rt.switcherHandler.Create)
+					r.Put("/{id}", rt.switcherHandler.Update)
+					r.Put("/{id}/pairs/{pair}", rt.switcherHandler.UpdatePair)
+					r.Delete("/{id}", rt.switcherHandler.Delete)
+				})
+			})
+
+			// Setting routes
+			r.Route("/settings", func(r chi.Router) {
+				// View routes (require view:settings permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionViewSettings))
+					r.Get("/", rt.settingHandler.List)
+					r.Get("/search", rt.settingHandler.GetByBaseQuote)
+					r.Get("/{id}", rt.settingHandler.Get)
+				})
+				// Manage routes (require manage:settings permission)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageSettings))
+					r.Post("/", rt.settingHandler.Create)
+					r.Put("/{id}", rt.settingHandler.Update)
+					r.Put("/{id}/parameters/{strategy}", rt.settingHandler.UpdateParameters)
+					r.Delete("/{id}", rt.settingHandler.Delete)
+				})
 			})
 		})
 	})

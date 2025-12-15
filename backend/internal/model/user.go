@@ -7,36 +7,36 @@ import (
 )
 
 type User struct {
-	ID                int64     `db:"id" json:"id"`
-	Username          string    `db:"username" json:"username"`
-	Password          string    `db:"password" json:"-"`
-	Email             string    `db:"email" json:"email"`
-	IsActive          bool      `db:"is_active" json:"is_active"`
-	TOTPSecret        *string   `db:"totp_secret" json:"-"`
-	TOTPEnabled       bool      `db:"totp_enabled" json:"totp_enabled"`
-	PendingTOTPSecret *string   `db:"pending_totp_secret" json:"-"`
-	CreatedAt         time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt         time.Time `db:"updated_at" json:"updated_at"`
+	ID                string    `json:"id"` // MongoDB ObjectID as string
+	Username          string    `json:"username"`
+	Password          string    `json:"-"`
+	Email             string    `json:"email"`
+	IsActive          bool      `json:"is_active"`
+	TOTPSecret        *string   `json:"-"`
+	TOTPEnabled       bool      `json:"totp_enabled"`
+	PendingTOTPSecret *string   `json:"-"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type Role struct {
-	ID          int64     `db:"id" json:"id"`
-	Name        string    `db:"name" json:"name"`
-	Description string    `db:"description" json:"description"`
-	CreatedAt   time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
+	ID          string    `json:"id"` // MongoDB ObjectID as string
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type RolePermission struct {
-	ID         int64           `db:"id" json:"id"`
-	RoleID     int64           `db:"role_id" json:"role_id"`
-	Permission enum.Permission `db:"permission" json:"permission"`
+	ID         string          `json:"id"`
+	RoleID     string          `json:"role_id"`
+	Permission enum.Permission `json:"permission"`
 }
 
 type UserRole struct {
-	ID     int64 `db:"id" json:"id"`
-	UserID int64 `db:"user_id" json:"user_id"`
-	RoleID int64 `db:"role_id" json:"role_id"`
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+	RoleID string `json:"role_id"`
 }
 
 type UserWithRoles struct {
@@ -52,12 +52,12 @@ type RoleWithPermissions struct {
 
 // LoginResult represents the result of a login attempt
 type LoginResult struct {
-	RequiresTOTP     bool           `json:"requires_totp"`
-	RequiresTOTPSetup bool          `json:"requires_totp_setup"`
-	Token            string         `json:"token,omitempty"`
-	User             *UserWithRoles `json:"user,omitempty"`
-	TempUserID       int64          `json:"temp_user_id,omitempty"`
-	TOTPSetup        *TOTPSetup     `json:"totp_setup,omitempty"`
+	RequiresTOTP      bool           `json:"requires_totp"`
+	RequiresTOTPSetup bool           `json:"requires_totp_setup"`
+	Token             string         `json:"token,omitempty"`
+	User              *UserWithRoles `json:"user,omitempty"`
+	TempUserID        string         `json:"temp_user_id,omitempty"`
+	TOTPSetup         *TOTPSetup     `json:"totp_setup,omitempty"`
 }
 
 // TOTPSetup contains information needed to set up TOTP
@@ -68,6 +68,6 @@ type TOTPSetup struct {
 
 // RegisterResult represents the result of a registration
 type RegisterResult struct {
-	UserID    int64     `json:"user_id"`
+	UserID    string    `json:"user_id"`
 	TOTPSetup TOTPSetup `json:"totp_setup"`
 }

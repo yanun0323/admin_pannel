@@ -9,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//go:embed migration/*.sql
+//go:embed migration/sqlite/*.sql
 var migrationFS embed.FS
 
 func RunMigrations(db *sqlx.DB) error {
@@ -23,7 +23,7 @@ func RunMigrations(db *sqlx.DB) error {
 		return fmt.Errorf("create schema_migrations table: %w", err)
 	}
 
-	entries, err := migrationFS.ReadDir("migration")
+	entries, err := migrationFS.ReadDir("migration/sqlite")
 	if err != nil {
 		return fmt.Errorf("read migration dir: %w", err)
 	}
@@ -47,7 +47,7 @@ func RunMigrations(db *sqlx.DB) error {
 			continue // Skip already applied migration
 		}
 
-		content, err := migrationFS.ReadFile("migration/" + entry.Name())
+		content, err := migrationFS.ReadFile("migration/sqlite/" + entry.Name())
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", entry.Name(), err)
 		}

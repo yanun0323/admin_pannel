@@ -1,15 +1,14 @@
+import { Route, Router } from '@solidjs/router';
 import { type Component, onMount, Show } from 'solid-js';
-import { Router, Route } from '@solidjs/router';
-import { authStore } from './stores/auth';
 import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import KLine from './pages/KLine';
-import KLineSimple from './pages/KLineSimple';
-import RBAC from './pages/RBAC';
 import AccountSettings from './pages/AccountSettings';
 import APIKeys from './pages/APIKeys';
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
+import RBAC from './pages/RBAC';
+import Register from './pages/Register';
+import TradingBot from './pages/TradingBot';
+import { authStore } from './stores/auth';
 
 const App: Component = () => {
   onMount(() => {
@@ -37,22 +36,6 @@ const App: Component = () => {
           )}
         />
         <Route
-          path="/kline"
-          component={() => (
-            <ProtectedRoute permission="view:kline">
-              <KLine />
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/kline-simple"
-          component={() => (
-            <ProtectedRoute permission="view:kline">
-              <KLineSimple />
-            </ProtectedRoute>
-          )}
-        />
-        <Route
           path="/rbac"
           component={() => (
             <ProtectedRoute permission="manage:roles">
@@ -73,6 +56,14 @@ const App: Component = () => {
           component={() => (
             <ProtectedRoute permission="manage:api_keys">
               <APIKeys />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/trading-bot"
+          component={() => (
+            <ProtectedRoute permission="manage:switchers">
+              <TradingBot />
             </ProtectedRoute>
           )}
         />

@@ -47,10 +47,11 @@ type SpreadRecord struct {
 type TradingWebSocketMessage struct {
 	Action    string                `json:"action"`    // subscribe, unsubscribe, connect
 	Type      string                `json:"type"`      // kline, orderbook, orders
-	APIKeyID  int64                 `json:"apiKeyId"`  // API Key ID for private streams
+	APIKeyID  string                `json:"apiKeyId"`  // API Key ID for private streams
 	Symbol    string                `json:"symbol"`    // Trading pair
 	Interval  string                `json:"interval"`  // Kline interval (1m, 5m, etc.)
 }
+
 
 // TradingWebSocketResponse represents response messages from the trading WebSocket
 type TradingWebSocketResponse struct {
@@ -91,18 +92,20 @@ func GetBinanceConfig(isTestnet bool) ExchangeConfig {
 // GetBTCCConfig returns BTCC WebSocket configuration
 func GetBTCCConfig(isTestnet bool) ExchangeConfig {
 	if isTestnet {
+		// BTCC testnet/UAT environment
 		return ExchangeConfig{
 			Platform:    PlatformBTCC,
 			IsTestnet:   true,
-			BaseWSURL:   "wss://testnet.btcc.com/ws",
-			BaseRESTURL: "https://testnet.btcc.com/api",
+			BaseWSURL:   "wss://spot.cryptouat.com:8700/ws",
+			BaseRESTURL: "https://spot.cryptouat.com:8700",
 		}
 	}
+	// BTCC production environment
 	return ExchangeConfig{
 		Platform:    PlatformBTCC,
 		IsTestnet:   false,
-		BaseWSURL:   "wss://api.btcc.com/ws",
-		BaseRESTURL: "https://api.btcc.com/api",
+		BaseWSURL:   "wss://spotprice2.btcccdn.com/ws",
+		BaseRESTURL: "https://spotapi2.btcccdn.com",
 	}
 }
 

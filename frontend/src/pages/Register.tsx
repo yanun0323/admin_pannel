@@ -1,5 +1,5 @@
 import { A, useNavigate } from '@solidjs/router';
-import { type Component, createSignal, Show, For } from 'solid-js';
+import { type Component, createSignal, For, Show } from 'solid-js';
 import { api } from '../lib/api';
 
 interface TOTPSetup {
@@ -8,7 +8,7 @@ interface TOTPSetup {
 }
 
 interface PendingActivation {
-  userId: number;
+  userId: string;
   totpSetup: TOTPSetup;
 }
 
@@ -56,7 +56,7 @@ const Register: Component = () => {
 
   const handleCodeInput = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1);
-    
+
     const newCode = [...activationCode()];
     newCode[index] = digit;
     setActivationCode(newCode);
@@ -80,14 +80,14 @@ const Register: Component = () => {
     e.preventDefault();
     const pastedData = e.clipboardData?.getData('text') || '';
     const digits = pastedData.replace(/\D/g, '').slice(0, 6).split('');
-    
+
     if (digits.length > 0) {
       const newCode = [...activationCode()];
       digits.forEach((digit, i) => {
         if (i < 6) newCode[i] = digit;
       });
       setActivationCode(newCode);
-      
+
       const nextEmptyIndex = newCode.findIndex(d => d === '');
       const focusIndex = nextEmptyIndex === -1 ? 5 : nextEmptyIndex;
       codeInputRefs[focusIndex]?.focus();

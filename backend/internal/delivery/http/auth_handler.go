@@ -24,7 +24,7 @@ type RegisterRequest struct {
 }
 
 type ActivateAccountRequest struct {
-	UserID int64  `json:"user_id"`
+	UserID string `json:"user_id"`
 	Code   string `json:"code"`
 }
 
@@ -39,7 +39,7 @@ type ChangePasswordRequest struct {
 }
 
 type VerifyTOTPRequest struct {
-	UserID int64  `json:"user_id"`
+	UserID string `json:"user_id"`
 	Code   string `json:"code"`
 }
 
@@ -56,7 +56,7 @@ type LoginResponse struct {
 	RequiresTOTPSetup bool   `json:"requires_totp_setup"`
 	Token             string `json:"token,omitempty"`
 	User              any    `json:"user,omitempty"`
-	TempUserID        int64  `json:"temp_user_id,omitempty"`
+	TempUserID        string `json:"temp_user_id,omitempty"`
 	TOTPSetup         any    `json:"totp_setup,omitempty"`
 }
 
@@ -100,7 +100,7 @@ func (h *AuthHandler) ActivateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.UserID == 0 || req.Code == "" {
+	if req.UserID == "" || req.Code == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "user_id and code are required"})
 		return
 	}
@@ -165,7 +165,7 @@ func (h *AuthHandler) VerifyTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.UserID == 0 || req.Code == "" {
+	if req.UserID == "" || req.Code == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "user_id and code are required"})
 		return
 	}

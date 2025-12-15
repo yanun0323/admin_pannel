@@ -10,8 +10,14 @@ import (
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
+	MongoDB  MongoDBConfig  `yaml:"mongodb"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	Binance  BinanceConfig  `yaml:"binance"`
+}
+
+type MongoDBConfig struct {
+	URI      string `yaml:"uri"`
+	Database string `yaml:"database"`
 }
 
 type ServerConfig struct {

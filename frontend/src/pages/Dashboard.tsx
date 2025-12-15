@@ -1,6 +1,6 @@
-import { type Component, Show, For } from 'solid-js';
 import { A } from '@solidjs/router';
-import { FiTrendingUp, FiShield, FiKey, FiArrowRight } from 'solid-icons/fi';
+import { FiActivity, FiArrowRight, FiKey, FiShield, FiTrendingUp } from 'solid-icons/fi';
+import { type Component, For, Show } from 'solid-js';
 import Layout from '../components/Layout';
 import { authStore } from '../stores/auth';
 
@@ -54,6 +54,43 @@ const Dashboard: Component = () => {
                 <FiArrowRight class="card-arrow" />
               </A>
             </Show>
+
+            <Show when={authStore.hasPermission('manage:api_keys')}>
+              <A href="/api-keys" class="card">
+                <div class="card-icon blue">
+                  <FiKey />
+                </div>
+                <div class="card-content">
+                  <h3>API Keys</h3>
+                  <p>Manage exchange API credentials</p>
+                </div>
+                <FiArrowRight class="card-arrow" />
+              </A>
+            </Show>
+
+            <Show when={authStore.hasPermission('manage:switchers')}>
+              <A href="/trading-bot" class="card">
+                <div class="card-icon purple">
+                  <FiTrendingUp />
+                </div>
+                <div class="card-content">
+                  <h3>Trading Bot</h3>
+                  <p>Configure trading pairs and strategies</p>
+                </div>
+                <FiArrowRight class="card-arrow" />
+              </A>
+            </Show>
+
+            <A href="/trading-bot-monitor" class="card">
+              <div class="card-icon cyan">
+                <FiActivity />
+              </div>
+              <div class="card-content">
+                <h3>Trading Bot Monitor</h3>
+                <p>Real-time K-line and order tracking</p>
+              </div>
+              <FiArrowRight class="card-arrow" />
+            </A>
 
             <A href="/change-password" class="card">
               <div class="card-icon orange">

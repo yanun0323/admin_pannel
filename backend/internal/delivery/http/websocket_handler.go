@@ -28,6 +28,7 @@ type BinanceStreamManager struct {
 	mu         sync.RWMutex
 	subMu      sync.Mutex
 	done       chan struct{}
+	closed     bool
 }
 
 func NewBinanceStreamManager(binanceURL string) *BinanceStreamManager {
@@ -38,7 +39,18 @@ func NewBinanceStreamManager(binanceURL string) *BinanceStreamManager {
 	}
 }
 
+func (m *BinanceStreamManager) isClosed() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.closed
+}
+
 func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	if m.isClosed() {
+		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket upgrade error: %v", err)
@@ -46,6 +58,11 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	}
 
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		conn.Close()
+		return
+	}
 	m.clients[conn] = make(map[string]bool)
 	m.mu.Unlock()
 
@@ -60,6 +77,11 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("websocket error: %v", err)
 			}
+			break
+		}
+
+		// Check if manager is closed
+		if m.isClosed() {
 			break
 		}
 
@@ -189,17 +211,37 @@ func (m *BinanceStreamManager) broadcast(message []byte) {
 }
 
 func (m *BinanceStreamManager) Close() {
-	close(m.done)
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	m.closed = true
 
+	// Collect connections to close
+	binanceWS := m.binanceWS
+	m.binanceWS = nil
+
+	clients := make([]*websocket.Conn, 0, len(m.clients))
 	for client := range m.clients {
+		clients = append(clients, client)
+	}
+	m.clients = make(map[*websocket.Conn]map[string]bool)
+	m.mu.Unlock()
+
+	close(m.done)
+
+	// Close binance connection outside of lock
+	if binanceWS != nil {
+		binanceWS.Close()
+	}
+
+	// Close all client connections outside of lock
+	for _, client := range clients {
 		client.Close()
 	}
 
-	if m.binanceWS != nil {
-		m.binanceWS.Close()
-	}
+	log.Println("BinanceStreamManager: closed")
 }
 
 func formatStreamName(symbol, interval string) string {

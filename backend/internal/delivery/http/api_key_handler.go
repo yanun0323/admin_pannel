@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,13 +21,7 @@ func NewAPIKeyHandler(apiKeyUseCase adaptor.APIKeyUseCase) *APIKeyHandler {
 }
 
 func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
-	user := GetUserFromContext(r.Context())
-	if user == nil {
-		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
-		return
-	}
-
-	apiKeys, err := h.apiKeyUseCase.List(r.Context(), user.ID)
+	apiKeys, err := h.apiKeyUseCase.List(r.Context())
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to list api keys"})
 		return
@@ -38,26 +31,17 @@ func (h *APIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIKeyHandler) Get(w http.ResponseWriter, r *http.Request) {
-	user := GetUserFromContext(r.Context())
-	if user == nil {
-		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid api key id"})
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
-		return
-	}
-
-	apiKey, err := h.apiKeyUseCase.GetByID(r.Context(), user.ID, id)
+	apiKey, err := h.apiKeyUseCase.GetByID(r.Context(), id)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrAPIKeyNotFound):
 			WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "api key not found"})
-		case errors.Is(err, usecase.ErrAPIKeyUnauthorized):
-			WriteJSON(w, http.StatusForbidden, ErrorResponse{Error: "unauthorized to access this api key"})
 		default:
 			WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to get api key"})
 		}
@@ -68,19 +52,13 @@ func (h *APIKeyHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user := GetUserFromContext(r.Context())
-	if user == nil {
-		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
-		return
-	}
-
 	var req model.CreateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
 		return
 	}
 
-	apiKey, err := h.apiKeyUseCase.Create(r.Context(), user.ID, &req)
+	apiKey, err := h.apiKeyUseCase.Create(r.Context(), &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidPlatform):
@@ -104,16 +82,9 @@ func (h *APIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIKeyHandler) Update(w http.ResponseWriter, r *http.Request) {
-	user := GetUserFromContext(r.Context())
-	if user == nil {
-		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
-		return
-	}
-
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid api key id"})
 		return
 	}
 
@@ -123,13 +94,11 @@ func (h *APIKeyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey, err := h.apiKeyUseCase.Update(r.Context(), user.ID, id, &req)
+	apiKey, err := h.apiKeyUseCase.Update(r.Context(), id, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrAPIKeyNotFound):
 			WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "api key not found"})
-		case errors.Is(err, usecase.ErrAPIKeyUnauthorized):
-			WriteJSON(w, http.StatusForbidden, ErrorResponse{Error: "unauthorized to access this api key"})
 		case errors.Is(err, usecase.ErrAPIKeyNameEmpty):
 			WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "api key name cannot be empty"})
 		case errors.Is(err, usecase.ErrAPIKeyEmpty):
@@ -149,26 +118,17 @@ func (h *APIKeyHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIKeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	user := GetUserFromContext(r.Context())
-	if user == nil {
-		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid api key id"})
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
-		return
-	}
-
-	err = h.apiKeyUseCase.Delete(r.Context(), user.ID, id)
+	err := h.apiKeyUseCase.Delete(r.Context(), id)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrAPIKeyNotFound):
 			WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "api key not found"})
-		case errors.Is(err, usecase.ErrAPIKeyUnauthorized):
-			WriteJSON(w, http.StatusForbidden, ErrorResponse{Error: "unauthorized to access this api key"})
 		default:
 			WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to delete api key"})
 		}

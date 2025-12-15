@@ -34,43 +34,42 @@ func AllPlatforms() []Platform {
 }
 
 type APIKey struct {
-	ID        int64     `db:"id" json:"id"`
-	UserID    int64     `db:"user_id" json:"user_id"`
-	Name      string    `db:"name" json:"name"`
-	Platform  Platform  `db:"platform" json:"platform"`
-	APIKey    string    `db:"api_key" json:"api_key"`
-	APISecret string    `db:"api_secret" json:"-"` // Never expose in JSON responses
-	IsTestnet bool      `db:"is_testnet" json:"is_testnet"`
-	IsActive  bool      `db:"is_active" json:"is_active"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+	ID        string    `json:"id"` // MongoDB ObjectID as string
+	Name      string    `json:"name"`
+	Platform  Platform  `json:"platform"`
+	APIKey    string    `json:"api_key"`
+	APISecret string    `json:"-"` // Never expose in JSON responses
+	IsTestnet bool      `json:"is_testnet"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // APIKeyResponse is the response structure that masks sensitive data
 type APIKeyResponse struct {
-	ID            int64     `json:"id"`
-	UserID        int64     `json:"user_id"`
-	Name          string    `json:"name"`
-	Platform      Platform  `json:"platform"`
-	APIKeyMasked  string    `json:"api_key_masked"`
-	IsTestnet     bool      `json:"is_testnet"`
-	IsActive      bool      `json:"is_active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Platform        Platform  `json:"platform"`
+	APIKeyMasked    string    `json:"api_key_masked"`
+	APISecretMasked string    `json:"api_secret_masked"`
+	IsTestnet       bool      `json:"is_testnet"`
+	IsActive        bool      `json:"is_active"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // ToResponse converts APIKey to APIKeyResponse with masked sensitive data
 func (a *APIKey) ToResponse() APIKeyResponse {
 	return APIKeyResponse{
-		ID:           a.ID,
-		UserID:       a.UserID,
-		Name:         a.Name,
-		Platform:     a.Platform,
-		APIKeyMasked: maskAPIKey(a.APIKey),
-		IsTestnet:    a.IsTestnet,
-		IsActive:     a.IsActive,
-		CreatedAt:    a.CreatedAt,
-		UpdatedAt:    a.UpdatedAt,
+		ID:              a.ID,
+		Name:            a.Name,
+		Platform:        a.Platform,
+		APIKeyMasked:    maskAPIKey(a.APIKey),
+		APISecretMasked: maskAPIKey(a.APISecret),
+		IsTestnet:       a.IsTestnet,
+		IsActive:        a.IsActive,
+		CreatedAt:       a.CreatedAt,
+		UpdatedAt:       a.UpdatedAt,
 	}
 }
 

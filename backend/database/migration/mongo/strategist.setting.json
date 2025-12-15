@@ -1,0 +1,39 @@
+[{
+  "_id": {
+    "$oid": "6937814057b5c4ad96495953"
+  },
+  "BASE": "SOL",
+  "QUOTE": "USDT",
+  "STRATEGY": "JOE_BIDEN",
+  "PARAMETERS": {
+    "JOE_BIDEN": {
+      "DEPTH": 10,
+      "DEPTH_PRECISION": "0.01",
+      "QUANTITY_PRECISION": "0.001",
+      "PRICE_PRECISION": "0.01",
+      "TICK_SIZE": "0.01",
+      "MIN_ORDER_SIZE": "0.108",
+      "API_KEY_ID": "6937db4e57b5c4ad96495957",
+      "ARBITRAGE_THRESHOLD": "0.05",
+      "TRANSACTION_COST": "0.0004",
+      "REF_BID_SPREAD_TICK_SIZE": "2",
+      "REF_ASK_SPREAD_TICK_SIZE": "2",
+      "ORDER_LEVELS": 10,
+      "LEVEL_SPREAD_TICK_SIZE": "1",
+      "PHI": "0.8",
+      "BETA": "10",
+      "RANDOM_REMOVAL": 3,
+      "MIN_AMOUNT": "5",
+      "MAX_AMOUNT": "50",
+      "RHO": "1",
+      "KAPPA": "3",
+      "JITTER_STD": "0.05",
+      "RESHUFFLE_ZONE": [
+        "0",
+        "0"
+      ],
+      "EXPIRE_TIME": 0.1,
+      "REFRESH_TIME": 1
+    }
+  }
+}]

@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = 'http://localhost:8887/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -11,7 +11,7 @@ interface LoginResponse {
   requires_totp_setup: boolean;
   token?: string;
   user?: User;
-  temp_user_id?: number;
+  temp_user_id?: string;
   totp_setup?: TOTPSetup;
 }
 
@@ -23,7 +23,7 @@ interface TOTPSetup {
 interface RegisterResponse {
   message: string;
   data: {
-    user_id: number;
+    user_id: string;
     totp_setup: TOTPSetup;
   };
 }
@@ -34,7 +34,7 @@ interface TOTPSetupResponse {
 }
 
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   is_active: boolean;
@@ -46,7 +46,7 @@ export interface User {
 }
 
 export interface Role {
-  id: number;
+  id: string;
   name: string;
   description: string;
   created_at?: string;
@@ -59,11 +59,11 @@ export interface RoleWithPermissions extends Role {
 }
 
 export interface APIKeyResponse {
-  id: number;
-  user_id: number;
+  id: string;
   name: string;
   platform: string;
   api_key_masked: string;
+  api_secret_masked?: string;
   is_testnet: boolean;
   is_active: boolean;
   created_at: string;
@@ -84,6 +84,60 @@ export interface UpdateAPIKeyRequest {
   api_secret?: string;
   is_testnet?: boolean;
   is_active?: boolean;
+}
+
+// BTCC Market types
+export interface BTCCMarketInfo {
+  name: string;
+  money: string;
+  stock: string;
+  money_prec: number;
+  stock_prec: number;
+  min_amount: string;
+  switch: boolean;
+}
+
+export interface BTCCMarketListResponse {
+  error: null | { code: number; message: string };
+  result: BTCCMarketInfo[];
+  id: number;
+}
+
+// Switcher types
+export interface SwitcherPair {
+  enable: boolean;
+}
+
+export interface SwitcherResponse {
+  id: string;
+  pairs: Record<string, SwitcherPair>;
+}
+
+export interface UpdateSwitcherRequest {
+  pairs: Record<string, SwitcherPair>;
+}
+
+// Setting types
+export interface SettingResponse {
+  id: string;
+  base: string;
+  quote: string;
+  strategy: string;
+  parameters: Record<string, any>;
+}
+
+export interface CreateSettingRequest {
+  base: string;
+  quote: string;
+  strategy: string;
+  parameters: Record<string, any>;
+}
+
+export interface UpdateSettingRequest {
+  base?: string;
+  quote?: string;
+  strategy?: string;
+  parameters?: Record<string, any>;
 }
 
 class ApiClient {
@@ -141,7 +195,7 @@ class ApiClient {
     });
   }
 
-  async activateAccount(userId: number, code: string): Promise<ApiResponse<void>> {
+  async activateAccount(userId: string, code: string): Promise<ApiResponse<void>> {
     return this.request('/auth/activate', {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, code }),
@@ -159,7 +213,7 @@ class ApiClient {
     return response;
   }
 
-  async verifyTOTP(userId: number, code: string): Promise<LoginResponse> {
+  async verifyTOTP(userId: string, code: string): Promise<LoginResponse> {
     const response = await this.request<LoginResponse>('/auth/verify-totp', {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, code }),
@@ -220,7 +274,7 @@ class ApiClient {
     return this.request('/rbac/roles');
   }
 
-  async getRole(id: number): Promise<ApiResponse<RoleWithPermissions>> {
+  async getRole(id: string): Promise<ApiResponse<RoleWithPermissions>> {
     return this.request(`/rbac/roles/${id}`);
   }
 
@@ -231,20 +285,20 @@ class ApiClient {
     });
   }
 
-  async updateRole(id: number, name: string, description: string): Promise<ApiResponse<RoleWithPermissions>> {
+  async updateRole(id: string, name: string, description: string): Promise<ApiResponse<RoleWithPermissions>> {
     return this.request(`/rbac/roles/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ name, description }),
     });
   }
 
-  async deleteRole(id: number): Promise<ApiResponse<void>> {
+  async deleteRole(id: string): Promise<ApiResponse<void>> {
     return this.request(`/rbac/roles/${id}`, {
       method: 'DELETE',
     });
   }
 
-  async setRolePermissions(id: number, permissions: string[]): Promise<ApiResponse<void>> {
+  async setRolePermissions(id: string, permissions: string[]): Promise<ApiResponse<void>> {
     return this.request(`/rbac/roles/${id}/permissions`, {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
@@ -259,18 +313,18 @@ class ApiClient {
     return this.request('/rbac/users');
   }
 
-  async getUser(id: number): Promise<ApiResponse<User>> {
+  async getUser(id: string): Promise<ApiResponse<User>> {
     return this.request(`/rbac/users/${id}`);
   }
 
-  async assignRole(userId: number, roleId: number): Promise<ApiResponse<void>> {
+  async assignRole(userId: string, roleId: string): Promise<ApiResponse<void>> {
     return this.request(`/rbac/users/${userId}/roles`, {
       method: 'POST',
       body: JSON.stringify({ role_id: roleId }),
     });
   }
 
-  async removeRole(userId: number, roleId: number): Promise<ApiResponse<void>> {
+  async removeRole(userId: string, roleId: string): Promise<ApiResponse<void>> {
     return this.request(`/rbac/users/${userId}/roles/${roleId}`, {
       method: 'DELETE',
     });
@@ -281,7 +335,7 @@ class ApiClient {
     return this.request('/api-keys/');
   }
 
-  async getAPIKey(id: number): Promise<ApiResponse<APIKeyResponse>> {
+  async getAPIKey(id: string): Promise<ApiResponse<APIKeyResponse>> {
     return this.request(`/api-keys/${id}`);
   }
 
@@ -292,14 +346,14 @@ class ApiClient {
     });
   }
 
-  async updateAPIKey(id: number, req: UpdateAPIKeyRequest): Promise<ApiResponse<APIKeyResponse>> {
+  async updateAPIKey(id: string, req: UpdateAPIKeyRequest): Promise<ApiResponse<APIKeyResponse>> {
     return this.request(`/api-keys/${id}`, {
       method: 'PUT',
       body: JSON.stringify(req),
     });
   }
 
-  async deleteAPIKey(id: number): Promise<ApiResponse<void>> {
+  async deleteAPIKey(id: string): Promise<ApiResponse<void>> {
     return this.request(`/api-keys/${id}`, {
       method: 'DELETE',
     });
@@ -307,6 +361,82 @@ class ApiClient {
 
   async getAPIKeyPlatforms(): Promise<ApiResponse<string[]>> {
     return this.request('/api-keys/platforms');
+  }
+
+  // Switcher endpoints
+  async listSwitchers(): Promise<ApiResponse<SwitcherResponse[]>> {
+    return this.request('/switchers/');
+  }
+
+  async getSwitcher(id: string): Promise<ApiResponse<SwitcherResponse>> {
+    return this.request(`/switchers/${id}`);
+  }
+
+  async createSwitcher(req: UpdateSwitcherRequest): Promise<ApiResponse<SwitcherResponse>> {
+    return this.request('/switchers/', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async updateSwitcher(id: string, req: UpdateSwitcherRequest): Promise<ApiResponse<SwitcherResponse>> {
+    return this.request(`/switchers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async updateSwitcherPair(id: string, pair: string, enable: boolean): Promise<ApiResponse<SwitcherResponse>> {
+    return this.request(`/switchers/${id}/pairs/${pair}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enable }),
+    });
+  }
+
+  async deleteSwitcher(id: string): Promise<ApiResponse<void>> {
+    return this.request(`/switchers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Setting endpoints
+  async listSettings(): Promise<ApiResponse<SettingResponse[]>> {
+    return this.request('/settings/');
+  }
+
+  async getSetting(id: string): Promise<ApiResponse<SettingResponse>> {
+    return this.request(`/settings/${id}`);
+  }
+
+  async createSetting(req: CreateSettingRequest): Promise<ApiResponse<SettingResponse>> {
+    return this.request('/settings/', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async updateSetting(id: string, req: UpdateSettingRequest): Promise<ApiResponse<SettingResponse>> {
+    return this.request(`/settings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async deleteSetting(id: string): Promise<ApiResponse<void>> {
+    return this.request(`/settings/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // BTCC Proxy APIs
+  async getBTCCMarkets(testnet: boolean = false): Promise<BTCCMarketListResponse> {
+    const params = testnet ? '?testnet=true' : '';
+    const response = await fetch(`${API_BASE}/btcc/markets${params}`, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+    });
+    return response.json();
   }
 }
 

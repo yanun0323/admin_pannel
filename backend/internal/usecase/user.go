@@ -27,7 +27,7 @@ func NewUserUseCase(
 	}
 }
 
-func (uc *UserUseCase) GetUser(ctx context.Context, id int64) (*model.UserWithRoles, error) {
+func (uc *UserUseCase) GetUser(ctx context.Context, id string) (*model.UserWithRoles, error) {
 	user, err := uc.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,6 @@ func (uc *UserUseCase) GetUser(ctx context.Context, id int64) (*model.UserWithRo
 	if err != nil {
 		return nil, err
 	}
-
 	permissions, err := uc.userRoleRepo.GetUserPermissions(ctx, user.ID)
 	if err != nil {
 		return nil, err
@@ -85,14 +84,14 @@ func (uc *UserUseCase) UpdateUser(ctx context.Context, user *model.User) error {
 	return uc.userRepo.Update(ctx, user)
 }
 
-func (uc *UserUseCase) DeleteUser(ctx context.Context, id int64) error {
+func (uc *UserUseCase) DeleteUser(ctx context.Context, id string) error {
 	return uc.userRepo.Delete(ctx, id)
 }
 
-func (uc *UserUseCase) AssignRole(ctx context.Context, userID, roleID int64) error {
+func (uc *UserUseCase) AssignRole(ctx context.Context, userID, roleID string) error {
 	return uc.userRoleRepo.AssignRole(ctx, userID, roleID)
 }
 
-func (uc *UserUseCase) RemoveRole(ctx context.Context, userID, roleID int64) error {
+func (uc *UserUseCase) RemoveRole(ctx context.Context, userID, roleID string) error {
 	return uc.userRoleRepo.RemoveRole(ctx, userID, roleID)
 }

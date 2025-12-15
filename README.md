@@ -68,7 +68,7 @@ go mod tidy
 go run .
 ```
 
-The backend server will start at `http://localhost:8080`
+The backend server will start at `http://localhost:8887`
 
 #### Frontend
 
@@ -94,7 +94,7 @@ docker-compose down
 ```
 
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:8080
+- Backend API: http://localhost:8887
 
 ## API Endpoints
 
@@ -119,7 +119,7 @@ Backend configuration is in `backend/config/config.yaml`:
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 8887
 
 database:
   driver: "sqlite3"

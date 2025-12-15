@@ -1,14 +1,18 @@
 server:
-  host: "0.0.0.0"
-  port: 8080
+  host: '0.0.0.0'
+  port: 8887
 
 database:
-  driver: "sqlite3"
-  dsn: "data/control_page.db"
+  driver: 'sqlite3'
+  dsn: 'data/control_page.db'
+
+mongodb:
+  uri: 'mongodb://root:root@localhost:27017'
+  database: 'strategist'
 
 jwt:
-  secret: "your-super-secret-key-change-in-production"
+  secret: 'your-super-secret-key-change-in-production'
   expiration: 24h
 
 binance:
-  websocket_url: "wss://stream.binance.com:9443/ws"
+  websocket_url: 'wss://stream.binance.com:9443/ws'

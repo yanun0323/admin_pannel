@@ -56,7 +56,7 @@ func (uc *RoleUseCase) CreateRole(ctx context.Context, name, description string,
 	}, nil
 }
 
-func (uc *RoleUseCase) GetRole(ctx context.Context, id int64) (*model.RoleWithPermissions, error) {
+func (uc *RoleUseCase) GetRole(ctx context.Context, id string) (*model.RoleWithPermissions, error) {
 	role, err := uc.roleRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (uc *RoleUseCase) ListRoles(ctx context.Context) ([]model.RoleWithPermissio
 	return result, nil
 }
 
-func (uc *RoleUseCase) UpdateRole(ctx context.Context, id int64, name, description string) (*model.RoleWithPermissions, error) {
+func (uc *RoleUseCase) UpdateRole(ctx context.Context, id string, name, description string) (*model.RoleWithPermissions, error) {
 	role, err := uc.roleRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func (uc *RoleUseCase) UpdateRole(ctx context.Context, id int64, name, descripti
 	}, nil
 }
 
-func (uc *RoleUseCase) DeleteRole(ctx context.Context, id int64) error {
+func (uc *RoleUseCase) DeleteRole(ctx context.Context, id string) error {
 	role, err := uc.roleRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (uc *RoleUseCase) DeleteRole(ctx context.Context, id int64) error {
 	return uc.roleRepo.Delete(ctx, id)
 }
 
-func (uc *RoleUseCase) SetPermissions(ctx context.Context, roleID int64, permissions []enum.Permission) error {
+func (uc *RoleUseCase) SetPermissions(ctx context.Context, roleID string, permissions []enum.Permission) error {
 	role, err := uc.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (uc *RoleUseCase) SetPermissions(ctx context.Context, roleID int64, permiss
 	return uc.roleRepo.SetPermissions(ctx, roleID, permissions)
 }
 
-func (uc *RoleUseCase) GetPermissions(ctx context.Context, roleID int64) ([]enum.Permission, error) {
+func (uc *RoleUseCase) GetPermissions(ctx context.Context, roleID string) ([]enum.Permission, error) {
 	return uc.roleRepo.GetPermissions(ctx, roleID)
 }
 

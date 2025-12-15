@@ -1,4 +1,4 @@
-const WS_BASE_URL = 'ws://localhost:8080/ws';
+const WS_BASE_URL = 'ws://localhost:8887/ws';
 
 export interface KlineData {
   s: string;  // Symbol
@@ -40,18 +40,36 @@ class KlineWebSocket {
   private disconnectHandlers: Set<ConnectionHandler> = new Set();
   private reconnectTimeout: number | null = null;
   private subscriptions: Set<string> = new Set();
+  private isConnecting: boolean = false;
+  private shouldReconnect: boolean = true;
 
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    // If already connecting, don't start another connection
+    if (this.isConnecting) {
+      console.log('Kline WebSocket: connection already in progress');
       return;
     }
 
+    // If there's an existing connection, close it first
+    if (this.ws) {
+      console.log('Kline WebSocket: closing existing connection before reconnecting');
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.shouldReconnect = true;
+    this.isConnecting = true;
     this.ws = new WebSocket(`${WS_BASE_URL}/kline`);
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('Kline WebSocket connected');
+      this.isConnecting = false;
       this.connectHandlers.forEach(handler => handler());
-      
+
       // Resubscribe to all previous subscriptions
       this.subscriptions.forEach(sub => {
         const [symbol, interval] = sub.split(':');
@@ -74,22 +92,34 @@ class KlineWebSocket {
     };
 
     this.ws.onclose = () => {
-      console.log('WebSocket disconnected');
+      console.log('Kline WebSocket disconnected');
+      this.isConnecting = false;
+      this.ws = null;
       this.disconnectHandlers.forEach(handler => handler());
-      this.scheduleReconnect();
+      if (this.shouldReconnect) {
+        this.scheduleReconnect();
+      }
     };
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('Kline WebSocket error:', error);
+      this.isConnecting = false;
     };
   }
 
   disconnect(): void {
+    // Clear reconnect timer
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+
+    // Prevent auto-reconnect
+    this.shouldReconnect = false;
+    this.isConnecting = false;
+
     if (this.ws) {
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
@@ -108,7 +138,7 @@ class KlineWebSocket {
   subscribe(symbol: string, interval: string): void {
     const key = `${symbol}:${interval}`;
     this.subscriptions.add(key);
-    
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendSubscribe(symbol, interval);
     }
@@ -117,7 +147,7 @@ class KlineWebSocket {
   unsubscribe(symbol: string, interval: string): void {
     const key = `${symbol}:${interval}`;
     this.subscriptions.delete(key);
-    
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendUnsubscribe(symbol, interval);
     }
@@ -207,7 +237,7 @@ export interface SpreadRecord {
 export interface TradingMessage {
   action: 'connect' | 'subscribe' | 'unsubscribe';
   type?: 'kline' | 'orderbook' | 'orders';
-  apiKeyId?: number;
+  apiKeyId?: string;
   symbol?: string;
   interval?: string;
 }
@@ -222,7 +252,7 @@ export interface TradingResponse {
 }
 
 export interface ConnectedData {
-  apiKeyId: number;
+  apiKeyId: string;
   platform: string;
   isTestnet: boolean;
   name: string;
@@ -241,34 +271,58 @@ class TradingWebSocket {
   private reconnectTimeout: number | null = null;
   private token: string | null = null;
   private pendingMessages: TradingMessage[] = [];
-  private currentApiKeyId: number | null = null;
+  private currentApiKeyId: string | null = null;
+  private isConnecting: boolean = false;
 
   connect(token: string): void {
     this.token = token;
-    
-    if (this.ws?.readyState === WebSocket.OPEN) {
+
+    // If already connecting, don't start another connection
+    if (this.isConnecting) {
+      console.log('Trading WebSocket: connection already in progress');
       return;
     }
 
-    this.ws = new WebSocket(`${WS_BASE_URL}/trading?token=${token}`);
+    // If there's an existing connection, close it first
+    if (this.ws) {
+      console.log('Trading WebSocket: closing existing connection, readyState:', this.ws.readyState);
+      // Remove event handlers to prevent triggering reconnect
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    const wsUrl = `${WS_BASE_URL}/trading?token=${token}`;
+    console.log('Trading WebSocket: connecting to', wsUrl);
+    this.isConnecting = true;
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('Trading WebSocket connected');
+      console.log('Trading WebSocket connected, readyState:', this.ws?.readyState);
+      this.isConnecting = false;
       this.connectHandlers.forEach(handler => handler());
-      
+
       // Send pending messages
-      this.pendingMessages.forEach(msg => this.send(msg));
-      this.pendingMessages = [];
+      if (this.pendingMessages.length > 0) {
+        console.log('Trading WebSocket: sending', this.pendingMessages.length, 'pending messages');
+        const messages = [...this.pendingMessages];
+        this.pendingMessages = [];
+        messages.forEach(msg => this.send(msg));
+      }
     };
 
     this.ws.onmessage = (event) => {
+      console.log('Trading WebSocket: received message:', event.data);
       try {
         const response: TradingResponse = JSON.parse(event.data);
-        
+
         if (response.type === 'error' && response.error) {
           this.errorHandlers.forEach(handler => handler(response.error!));
         }
-        
+
         this.messageHandlers.forEach(handler => handler(response));
       } catch (e) {
         console.error('Failed to parse Trading WebSocket message:', e);
@@ -277,25 +331,39 @@ class TradingWebSocket {
 
     this.ws.onclose = () => {
       console.log('Trading WebSocket disconnected');
+      this.isConnecting = false;
+      this.ws = null;
+      this.currentApiKeyId = null;
       this.disconnectHandlers.forEach(handler => handler());
       this.scheduleReconnect();
     };
 
     this.ws.onerror = (error) => {
       console.error('Trading WebSocket error:', error);
+      this.isConnecting = false;
     };
   }
 
   disconnect(): void {
+    // Clear reconnect timer
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+
+    // Clear token to prevent auto-reconnect
+    this.token = null;
+    this.isConnecting = false;
+
     if (this.ws) {
+      // Remove onclose handler to prevent triggering reconnect
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
+
     this.currentApiKeyId = null;
+    this.pendingMessages = [];
   }
 
   private scheduleReconnect(): void {
@@ -311,14 +379,23 @@ class TradingWebSocket {
   }
 
   private send(message: TradingMessage): void {
+    const msgStr = JSON.stringify(message);
+    console.log('Trading WebSocket: send() called, ws exists:', !!this.ws, ', readyState:', this.ws?.readyState);
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      console.log('Trading WebSocket: sending message:', msgStr);
+      try {
+        this.ws.send(msgStr);
+        console.log('Trading WebSocket: message sent successfully');
+      } catch (e) {
+        console.error('Trading WebSocket: send error:', e);
+      }
     } else {
+      console.log('Trading WebSocket: queuing message (ws not open, readyState=' + this.ws?.readyState + '):', msgStr);
       this.pendingMessages.push(message);
     }
   }
 
-  connectToApiKey(apiKeyId: number): void {
+  connectToApiKey(apiKeyId: string): void {
     this.currentApiKeyId = apiKeyId;
     this.send({
       action: 'connect',
@@ -400,7 +477,7 @@ class TradingWebSocket {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  getCurrentApiKeyId(): number | null {
+  getCurrentApiKeyId(): string | null {
     return this.currentApiKeyId;
   }
 }

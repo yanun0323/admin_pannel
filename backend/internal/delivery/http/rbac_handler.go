@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -53,9 +52,8 @@ func (h *RBACHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) GetRole(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid role id"})
 		return
 	}
@@ -107,9 +105,8 @@ func (h *RBACHandler) CreateRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid role id"})
 		return
 	}
@@ -145,9 +142,8 @@ func (h *RBACHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) DeleteRole(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid role id"})
 		return
 	}
@@ -165,9 +161,8 @@ func (h *RBACHandler) DeleteRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) SetRolePermissions(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid role id"})
 		return
 	}
@@ -203,7 +198,7 @@ func (h *RBACHandler) GetAllPermissions(w http.ResponseWriter, r *http.Request) 
 // User handlers
 
 type AssignRoleRequest struct {
-	RoleID int64 `json:"role_id"`
+	RoleID string `json:"role_id"`
 }
 
 func (h *RBACHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -217,9 +212,8 @@ func (h *RBACHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) GetUser(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
 		return
 	}
@@ -238,9 +232,8 @@ func (h *RBACHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id := chi.URLParam(r, "id")
+	if id == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
 		return
 	}
@@ -251,7 +244,7 @@ func (h *RBACHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.RoleID <= 0 {
+	if req.RoleID == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "role_id is required"})
 		return
 	}
@@ -265,16 +258,14 @@ func (h *RBACHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RBACHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
-	userIDStr := chi.URLParam(r, "id")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
+	userID := chi.URLParam(r, "id")
+	if userID == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
 		return
 	}
 
-	roleIDStr := chi.URLParam(r, "roleId")
-	roleID, err := strconv.ParseInt(roleIDStr, 10, 64)
-	if err != nil {
+	roleID := chi.URLParam(r, "roleId")
+	if roleID == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid role id"})
 		return
 	}

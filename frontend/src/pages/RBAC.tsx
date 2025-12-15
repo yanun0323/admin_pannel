@@ -67,7 +67,7 @@ const RBAC: Component = () => {
     }
   };
 
-  const handleDeleteRole = async (id: number) => {
+  const handleDeleteRole = async (id: string) => {
     if (!confirm('Are you sure you want to delete this role?')) return;
 
     try {
@@ -92,7 +92,7 @@ const RBAC: Component = () => {
     setShowUserRoleModal(true);
   };
 
-  const handleAssignRole = async (roleId: number) => {
+  const handleAssignRole = async (roleId: string) => {
     const user = selectedUser();
     if (!user) return;
 
@@ -105,7 +105,7 @@ const RBAC: Component = () => {
     }
   };
 
-  const handleRemoveRole = async (userId: number, roleId: number) => {
+  const handleRemoveRole = async (userId: string, roleId: string) => {
     if (!confirm('Remove this role from the user?')) return;
 
     try {

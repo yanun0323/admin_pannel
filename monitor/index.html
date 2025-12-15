@@ -1,0 +1,2057 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BTCC Monitor</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        padding: 1rem;
+        margin: 0;
+        background: #05070a;
+        color: #e2e8f0;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      h1 {
+        margin-bottom: 0.75rem;
+      }
+
+      form {
+        display: grid;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .control-row,
+      .credential-row {
+        display: inline-block;
+        gap: 1rem;
+      }
+
+      .control-row {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      }
+
+      .credential-row {
+        grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+        align-items: end;
+      }
+
+      label {
+        font-size: 0.5rem;
+      }
+
+      select {
+        display: inline-block;
+        /* height: 1.5rem; */
+        width: 8rem;
+        font-size: 0.65rem;
+        padding: 0.1rem 0.1rem;
+        margin-left: 0.5rem;
+      }
+
+      .dashboard {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+      }
+
+      .chart-column {
+        flex: 1 1 75%;
+        min-width: 0;
+      }
+
+      #chart {
+        width: 100%;
+        height: 440px;
+      }
+
+      #spread-chart {
+        width: 100%;
+        height: 130px;
+        margin-top: 1rem;
+      }
+
+      .orderbook-panel {
+        flex: 0 0 25%;
+        min-width: 180px;
+        padding: 1rem 1rem;
+        border-radius: 0.75rem;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        box-shadow: 0 10px 25px rgba(2, 6, 23, 0.4);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .orderbook-panel h2 {
+        margin: 0 0 0.35rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #f8fafc;
+      }
+
+      .orderbook-subtitle {
+        font-size: 0.68rem;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        color: rgba(148, 163, 184, 0.75);
+        margin-bottom: 0.75rem;
+      }
+
+      .orderbook-header {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        font-size: 0.5rem;
+        color: rgba(148, 163, 184, 0.75);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.4rem;
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.3rem 0.1rem;
+        margin: 0.3rem 0;
+        font-size: 0.7rem;
+        font-weight: 600;
+        border-radius: 4px;
+        background: rgba(15, 23, 42, 0.5);
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-summary.top {
+        margin-bottom: 0.5rem;
+      }
+
+      .orderbook-summary.bottom {
+        margin-top: 0.5rem;
+      }
+
+      .orderbook-summary .label {
+        font-size: 0.6rem;
+        color: rgba(148, 163, 184, 0.75);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .orderbook-summary .value {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .orderbook-summary .ask-sum {
+        color: #f97316;
+      }
+
+      .orderbook-summary .bid-sum {
+        color: #22c55e;
+      }
+
+      .orderbook-section {
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-section.asks {
+        margin-bottom: 0.6rem;
+      }
+
+      .orderbook-section table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .orderbook-section tbody tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        font-size: 0.5rem;
+        padding: 0.01rem 0;
+        position: relative;
+        min-height: 1rem;
+      }
+
+      .orderbook-section tbody tr span {
+        display: inline-block;
+        position: relative;
+        z-index: 3;
+      }
+
+      .orderbook-section tbody tr.ask {
+        color: #fca5a5;
+      }
+
+      .orderbook-section tbody tr.bid {
+        color: #6ee7b7;
+      }
+
+      .orderbook-section tbody tr.highlight {
+        font-weight: 600;
+      }
+
+      .orderbook-sum {
+        color: rgba(148, 163, 184, 0.85);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .orderbook-price {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .orderbook-amount {
+        color: rgba(148, 163, 184, 0.85);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .orderbook-midprice {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.1rem 0.1rem;
+        margin: 0.1rem 0;
+        border-top: 1px dashed rgba(148, 163, 184, 0.2);
+        border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #f8fafc;
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-midprice span {
+        font-size: 0.75rem;
+        color: rgba(148, 163, 184, 0.75);
+        font-weight: 500;
+      }
+
+      .orderbook-foot {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        margin-top: 0.1rem;
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-foot .bids-share {
+        color: #22c55e;
+      }
+
+      .orderbook-foot .asks-share {
+        color: #f97316;
+      }
+
+      .orderbook-empty {
+        font-size: 0.75rem;
+        color: rgba(148, 163, 184, 0.8);
+        margin-top: 0.75rem;
+        text-align: center;
+        position: relative;
+        z-index: 1;
+      }
+
+      .orderbook-row-bar {
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+        width: 100%;
+        background: rgba(239, 68, 68, 0.25);
+        transition: width 0.3s ease;
+        z-index: 2;
+        border-radius: 2px;
+      }
+
+      .orderbook-row-bar.bid {
+        background: rgba(16, 185, 129, 0.25);
+      }
+
+      .orderbook-row-bar.ask {
+        background: rgba(239, 68, 68, 0.25);
+      }
+
+      .orderbook-section tbody tr.highlight .orderbook-row-bar.bid {
+        background: rgba(16, 185, 129, 0.35);
+      }
+
+      .orderbook-section tbody tr.highlight .orderbook-row-bar.ask {
+        background: rgba(239, 68, 68, 0.35);
+      }
+
+      .orderbook-depth-bar {
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+        width: 100%;
+        transition: width 0.3s ease;
+        z-index: 1;
+        border-radius: 2px;
+      }
+
+      .orderbook-depth-bar.bid {
+        background: rgba(16, 185, 129, 0.08);
+      }
+
+      .orderbook-depth-bar.ask {
+        background: rgba(239, 68, 68, 0.08);
+      }
+
+      #spread {
+        margin-top: 0.75rem;
+        font-size: 0.9rem;
+        text-align: right;
+        color: #94a3b8;
+      }
+
+      #spread .value {
+        color: #fbbf24;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #order-count {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        text-align: right;
+        color: #a1a1aa;
+      }
+
+      #order-count .value {
+        font-weight: 600;
+        color: #38bdf8;
+      }
+
+      @media (max-width: 640px) {
+        .control-row,
+        .credential-row {
+          grid-template-columns: 1fr;
+        }
+
+        .dashboard {
+          flex-direction: column;
+        }
+
+        .orderbook-panel {
+          width: 100%;
+        }
+
+        .orderbook-midprice {
+          justify-content: center;
+          flex-direction: column;
+          gap: 0.3rem;
+        }
+      }
+
+      .block {
+        display: inline-block;
+        margin-right: 1rem;
+      }
+
+      .info {
+        display: block;
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        margin-right: 1rem;
+      }
+
+      .info-block {
+        display: inline-block;
+        margin-left: 30px;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.min.js"></script>
+  </head>
+  <body>
+    <div>
+      <h1>BTCC WebSocket K-Line Monitor</h1>
+      <form id="connection-form" autocomplete="off">
+        <div class="control-row">
+          <label class="block">
+            Market
+            <select id="market" name="market" required></select>
+          </label>
+          <label class="block">
+            Interval
+            <select id="interval" name="interval" required>
+              <option value="60" selected>1m</option>
+              <option value="180">3m</option>
+              <option value="300">5m</option>
+              <option value="900">15m</option>
+              <option value="1800">30m</option>
+              <option value="3600">1h</option>
+              <option value="14400">4h</option>
+              <option value="86400">1d</option>
+            </select>
+          </label>
+          <label class="block">
+            Candle Count
+            <select id="candle-count" name="candleCount" required>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="150">150</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <label class="block">
+            OrderBook Depth
+            <select id="enable-depth" name="enableDepth">
+              <option value="true" selected>Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </label>
+        </div>
+      </form>
+      <section class="dashboard">
+        <div class="chart-column">
+          <section id="chart"></section>
+          <section id="spread-chart"></section>
+        </div>
+        <aside class="orderbook-panel">
+          <div class="orderbook-header">
+            <span>Price</span>
+            <span>Amount</span>
+          </div>
+          <div id="orderbook-summary-top" class="orderbook-summary top" hidden>
+            <span class="label">Ask Orders</span>
+            <span class="value ask-sum">—</span>
+          </div>
+          <div class="orderbook-section asks">
+            <table>
+              <tbody id="orderbook-asks"></tbody>
+            </table>
+          </div>
+          <div id="orderbook-midprice" class="orderbook-midprice" hidden>
+            <span>Mid</span>
+            <strong class="value">—</strong>
+          </div>
+          <div class="orderbook-section bids">
+            <table>
+              <tbody id="orderbook-bids"></tbody>
+            </table>
+          </div>
+          <div id="orderbook-summary-bottom" class="orderbook-summary bottom" hidden>
+            <span class="label">Bid Orders</span>
+            <span class="value bid-sum">—</span>
+          </div>
+          <div id="orderbook-foot" class="orderbook-foot" hidden>
+            <span class="bids-share">Bids —</span>
+            <span class="asks-share">Asks —</span>
+          </div>
+          <div id="orderbook-empty" class="orderbook-empty" hidden>
+            No active limit orders to display yet.
+          </div>
+        </aside>
+      </section>
+      <div class="info">
+        <div id="spread" class="info-block">Spread: <span class="value">—</span></div>
+        <div id="order-count" class="info-block">Active Orders: <span class="value">0</span></div>
+        <div id="environment" class="info-block">{{ENVIRONMENT}}</div>
+      </div>
+    </main>
+    <script>
+      const WS_ENDPOINT = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+      const MARKET_LIST_ENDPOINT = `${location.origin}/api/markets`;
+
+      let ws;
+      let wsDepth;
+      let chart;
+      let candleSeries;
+      let currentMarket = null;
+      let currentInterval = null;
+      let reconnectTimer;
+      let reconnectTimerDepth;
+      const priceLines = new Map();
+      const pendingOrders = new Map();
+      const pendingRequests = new Map();
+      const pendingRequestsDepth = new Map();
+      const orderPrices = new Map();
+      let requestSeq = 1;
+      let requestSeqDepth = 1;
+      let lastCandleTime = 0;
+      let bestBidId = null;
+      let bestAskId = null;
+      const numberFormatter = new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 6,
+      });
+      const pendingKlineRows = [];
+      let klineFlushScheduled = false;
+      let spreadChart;
+      let spreadSeries;
+      let spreadBaselineSeries;
+      const spreadHistory = [];
+      const spreadHistoryLimit = 360;
+      let spreadLastValue = Number.NaN;
+      const spreadEpsilon = 1e-8;
+      let spreadUpdateIntervalId = null;
+      const ORDERBOOK_ROW_LIMIT = 10;
+      let orderBookRenderScheduled = false;
+      const scheduleFrame =
+        typeof window.requestAnimationFrame === "function"
+          ? window.requestAnimationFrame.bind(window)
+          : (cb) => setTimeout(cb, 16);
+      let activeAccessId = "{{ACCESS_ID}}";
+      let activeSecretKey = "{{SECRET_KEY}}";
+      let hashedSecretPromise = null;
+      let credentialRevision = 0;
+      let marketsLoaded = false;
+      let marketListAttempted = false;
+      let availableMarkets = [{ name: "SOLUSDT" }];
+      const subscriptions = {
+        kline: false,
+        orders: false,
+        depth: false,
+      };
+      const depthData = {
+        asks: [],
+        bids: [],
+        last: null,
+      };
+      let depthMergeInterval = "0.01";
+      let depthSize = 50;
+
+      const form = document.getElementById("connection-form");
+      const marketSelect = document.getElementById("market");
+      const intervalInput = document.getElementById("interval");
+      const candleCountInput = document.getElementById("candle-count");
+      const enableDepthInput = document.getElementById("enable-depth");
+      const applyCredentialsBtn = document.getElementById("apply-credentials");
+      const spreadValueEl = document.querySelector("#spread .value");
+      const spreadChartEl = document.getElementById("spread-chart");
+      const orderCountEl = document.querySelector("#order-count .value");
+      const orderBookAskBody = document.getElementById("orderbook-asks");
+      const orderBookBidBody = document.getElementById("orderbook-bids");
+      const orderBookMidEl = document.getElementById("orderbook-midprice");
+      const orderBookMidValueEl = orderBookMidEl?.querySelector(".value") || null;
+      const orderBookFootEl = document.getElementById("orderbook-foot");
+      const orderBookBidShareEl = orderBookFootEl?.querySelector(".bids-share") || null;
+      const orderBookAskShareEl = orderBookFootEl?.querySelector(".asks-share") || null;
+      const orderBookEmptyEl = document.getElementById("orderbook-empty");
+      const orderBookSummaryTopEl = document.getElementById("orderbook-summary-top");
+      const orderBookSummaryTopValueEl = orderBookSummaryTopEl?.querySelector(".ask-sum") || null;
+      const orderBookSummaryBottomEl = document.getElementById("orderbook-summary-bottom");
+      const orderBookSummaryBottomValueEl = orderBookSummaryBottomEl?.querySelector(".bid-sum") || null;
+
+      function appendLog(msg) {
+        console.info(msg)
+      }
+      
+      function isDepthEnabled() {
+        return enableDepthInput && enableDepthInput.value === "true";
+      }
+
+      function populateMarketOptions(preferred = "SOLUSDT") {
+        marketSelect.innerHTML = "";
+        if (!availableMarkets.length) {
+          availableMarkets = [{ name: preferred }];
+        }
+        availableMarkets.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.name;
+          option.textContent = item.name;
+          marketSelect.append(option);
+        });
+        if (availableMarkets.some((item) => item.name === preferred)) {
+          marketSelect.value = preferred;
+        } else if (availableMarkets.length) {
+          marketSelect.selectedIndex = 0;
+        }
+      }
+
+      async function fetchMarketList(currentSelection) {
+        if (marketsLoaded) {
+          appendLog("Market list already cached, skip fetching");
+          populateMarketOptions(currentSelection || marketSelect.value || "SOLUSDT");
+          return;
+        }
+        if (marketListAttempted) {
+          appendLog("Market list fetch previously failed, using cached fallback", "error");
+          populateMarketOptions(currentSelection || marketSelect.value || "SOLUSDT");
+          return;
+        }
+        marketListAttempted = true;
+        appendLog("Fetching market list…");
+        try {
+          const response = await fetch(MARKET_LIST_ENDPOINT);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          const list = payload?.result ?? payload?.data?.result ?? [];
+          if (!Array.isArray(list) || !list.length) {
+            throw new Error("Market list payload empty");
+          }
+          availableMarkets = list
+            .filter((item) => item?.name)
+            .map((item) => ({ name: String(item.name).toUpperCase() }))
+            .sort((a, b) => {
+              const popular = [
+                "BTCUSDT",
+                "ETHUSDT",
+                "SOLUSDT",
+                "DOGEUSDT",
+                "ADAUSDT",
+                "BNBUSDT",
+                "XRPUSDT",
+              ]
+              const priority = (name) => (popular.includes(name) ? 0 : 1);
+              const pa = priority(a.name);
+              const pb = priority(b.name);
+              if (pa !== pb) {
+                return pa - pb; // 先放高優先權市場
+              }
+              return a.name.localeCompare(b.name); // 其他情況按字母順序
+            });
+          marketsLoaded = true;
+          appendLog(`Market list fetched (${availableMarkets.length} entries)`, "success");
+        } catch (err) {
+          appendLog(`Failed to fetch market list: ${err.message}. Possible CORS block.`, "error");
+          if (!marketsLoaded) {
+            appendLog("Fallback to BTCUSDT only because market list unavailable", "error");
+            availableMarkets = [{ name: "BTCUSDT" }];
+          }
+        } finally {
+          populateMarketOptions(currentSelection || "BTCUSDT");
+        }
+      }
+
+      function ensureChart() {
+        if (chart) {
+          return;
+        }
+        chart = LightweightCharts.createChart(document.getElementById("chart"), {
+          layout: { background: { color: "#05070a" }, textColor: "#e2e8f0" },
+          grid: {
+            vertLines: { color: "rgba(148, 163, 184, 0.1)" },
+            horzLines: { color: "rgba(148, 163, 184, 0.1)" },
+          },
+          crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+          rightPriceScale: { borderVisible: false },
+          timeScale: {
+            borderVisible: false,
+            timeVisible: true,
+            secondsVisible: true,
+          },
+        });
+        candleSeries = chart.addCandlestickSeries({
+          upColor: "#10b981",
+          downColor: "#ef4444",
+          borderDownColor: "#ef4444",
+          borderUpColor: "#10b981",
+          wickDownColor: "#ef4444",
+          wickUpColor: "#10b981",
+        });
+      }
+
+      function ensureSpreadChart() {
+        if (spreadChart && spreadSeries) {
+          return;
+        }
+        if (!spreadChartEl) {
+          return;
+        }
+        if (!spreadChart) {
+          spreadChart = LightweightCharts.createChart(spreadChartEl, {
+            layout: { background: { color: "#05070a" }, textColor: "#cbd5f5" },
+            grid: {
+              vertLines: { color: "rgba(148, 163, 184, 0.08)" },
+              horzLines: { color: "rgba(148, 163, 184, 0.08)" },
+            },
+            rightPriceScale: {
+              borderVisible: false,
+              scaleMargins: { top: 0.1, bottom: 0.1 },
+              autoScale: true,
+            },
+            timeScale: {
+              borderVisible: true,
+              timeVisible: true,
+              secondsVisible: true,
+            },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+          });
+        }
+        if (!spreadSeries) {
+          spreadSeries = spreadChart.addLineSeries({
+            color: "#fbbf24",
+            lineWidth: 1,
+          });
+          if (spreadHistory.length) {
+            spreadSeries.setData(spreadHistory);
+          }
+          
+          spreadBaselineSeries = spreadSeries.createPriceLine({
+            price: 0.05,
+            color: "rgba(100, 116, 139, 0.8)",
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: false,
+            title: "0.05",
+          });
+        }
+      }
+
+
+      function clearChart() {
+        if (!candleSeries) {
+          return;
+        }
+        stopSpreadUpdateTimer();
+        pendingKlineRows.length = 0;
+        klineFlushScheduled = false;
+        candleSeries.setData([]);
+        lastCandleTime = 0;
+        priceLines.forEach((line) => candleSeries.removePriceLine(line));
+        priceLines.clear();
+        pendingOrders.clear();
+        orderPrices.clear();
+        bestBidId = null;
+        bestAskId = null;
+        spreadHistory.length = 0;
+        if (spreadSeries) {
+          spreadSeries.setData([]);
+        }
+        depthData.asks = [];
+        depthData.bids = [];
+        depthData.last = null;
+        updateSpreadDisplay(Number.NaN, Number.NaN);
+        updateOrderCountTag();
+        if (orderBookEmptyEl) {
+          orderBookEmptyEl.hidden = false;
+        }
+        if (orderBookAskBody) {
+          orderBookAskBody.innerHTML = "";
+        }
+        if (orderBookBidBody) {
+          orderBookBidBody.innerHTML = "";
+        }
+        if (orderBookMidEl) {
+          orderBookMidEl.hidden = true;
+        }
+        if (orderBookFootEl) {
+          orderBookFootEl.hidden = true;
+        }
+        if (orderBookSummaryTopEl) {
+          orderBookSummaryTopEl.hidden = true;
+        }
+        if (orderBookSummaryBottomEl) {
+          orderBookSummaryBottomEl.hidden = true;
+        }
+        orderBookRenderScheduled = false;
+      }
+
+      function updateCandles(rows) {
+        if (!Array.isArray(rows) || !rows.length) {
+          return;
+        }
+        if (!candleSeries) {
+          appendLog("kline.update called before chart init", "error");
+          return;
+        }
+        rows.forEach((entry) => {
+          if (Array.isArray(entry) && entry.length >= 5) {
+            pendingKlineRows.push(entry);
+          }
+        });
+        if (!pendingKlineRows.length) {
+          return;
+        }
+        if (!klineFlushScheduled) {
+          klineFlushScheduled = true;
+          scheduleFrame(flushPendingKlines);
+        }
+      }
+
+      function flushPendingKlines() {
+        klineFlushScheduled = false;
+        if (!candleSeries || !pendingKlineRows.length) {
+          pendingKlineRows.length = 0;
+          return;
+        }
+        const batch = pendingKlineRows.splice(0, pendingKlineRows.length);
+        batch.sort((a, b) => a[0] - b[0]);
+        applySortedKlines(batch);
+      }
+
+      function applySortedKlines(rows) {
+        rows.forEach((entry) => {
+          const ts = Number(entry[0]);
+          if (Number.isNaN(ts)) {
+            appendLog(`Skip candle with invalid timestamp: ${JSON.stringify(entry)}`, "error");
+            return;
+          }
+          if (ts < lastCandleTime) {
+            return;
+          }
+          const candle = {
+            time: ts,
+            open: Number(entry[1]),
+            close: Number(entry[2]),
+            high: Number(entry[3]),
+            low: Number(entry[4]),
+          };
+          candleSeries.update(candle);
+          lastCandleTime = ts;
+        });
+      }
+
+      async function hashSecret(secret) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(secret);
+        const digest = await crypto.subtle.digest("SHA-256", data);
+        const bytes = Array.from(new Uint8Array(digest));
+        return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+
+      function trackSubscription(kind, value) {
+        subscriptions[kind] = value;
+      }
+
+      function subscribeKlines(market, intervalSeconds) {
+        appendLog(`Subscribing kline ${market} @ ${intervalSeconds}s`);
+        send({ method: "kline.subscribe", params: [market, intervalSeconds], id: requestSeq++ });
+        trackSubscription("kline", true);
+      }
+
+      function queryPendingOrders(market) {
+        appendLog(`Querying pending orders for ${market}`);
+        send({ method: "user.orders.query", params: [market, 200, 0, 0], id: requestSeq++ });
+      }
+
+      function normalizeOrderUpdates(raw) {
+        if (!Array.isArray(raw) || !raw.length) {
+          return [];
+        }
+        const isStatusOrderPair = (value, index) =>
+          index % 2 === 0 ? typeof value === "number" : typeof value === "object" && value !== null;
+        if (
+          raw.length === 2 &&
+          typeof raw[0] === "number" &&
+          typeof raw[1] === "object" &&
+          raw[1] !== null
+        ) {
+          return [{ status: raw[0], order: raw[1] }];
+        }
+        if (raw.length >= 2 && raw.every(isStatusOrderPair)) {
+          const paired = [];
+          for (let i = 0; i < raw.length - 1; i += 2) {
+            const status = raw[i];
+            const order = raw[i + 1];
+            if (typeof status === "number" && order && typeof order === "object") {
+              paired.push({ status, order });
+            }
+          }
+          if (paired.length) {
+            return paired;
+          }
+        }
+        const entries = [];
+        raw.forEach((item) => {
+          if (Array.isArray(item)) {
+            entries.push(...normalizeOrderUpdates(item));
+            return;
+          }
+          if (item && typeof item === "object") {
+            entries.push({ status: undefined, order: item });
+          }
+        });
+        return entries;
+      }
+
+      function handleOrderUpdates(raw) {
+        const updates = normalizeOrderUpdates(raw);
+        if (!updates.length) {
+          appendLog(`order update payload unrecognized: ${JSON.stringify(raw)}`, "error");
+          return;
+        }
+        updates.forEach(({ status, order }) => applyOrderMarker(order, status));
+      }
+
+      function resolveOrderPrice(order) {
+        const candidates = [
+          order?.price,
+          order?.avg_price,
+          order?.last_deal_price,
+          order?.deal_price,
+        ];
+        for (const value of candidates) {
+          const num = Number(value);
+          if (Number.isFinite(num) && num > 0) {
+            return num;
+          }
+        }
+        return Number.NaN;
+      }
+
+      function resolveOrderSide(order) {
+        const raw = order?.side;
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric)) {
+          if (numeric === 1) {
+            return "buy";
+          }
+          if (numeric === 2 || numeric === 0 || numeric === -1) {
+            return "sell";
+          }
+        }
+        const text = String(raw ?? "").toLowerCase();
+        if (text.includes("buy")) {
+          return "buy";
+        }
+        if (text.includes("sell")) {
+          return "sell";
+        }
+        return null;
+      }
+
+      function setLineHighlight(line, visible, title) {
+        if (!line) {
+          return;
+        }
+        if (visible) {
+          line.applyOptions({ axisLabelVisible: true, title });
+          return;
+        }
+        line.applyOptions({ axisLabelVisible: false, title: "" });
+      }
+
+      function appendSpreadPoint(value) {
+        ensureSpreadChart();
+        if (!spreadSeries || !Number.isFinite(value)) {
+          return;
+        }
+        if (Number.isFinite(spreadLastValue) && Math.abs(spreadLastValue - value) <= spreadEpsilon) {
+          return;
+        }
+        const time = Math.floor(Date.now() / 2);
+        if (spreadHistory.length && spreadHistory[spreadHistory.length - 1].time === time) {
+          spreadHistory[spreadHistory.length - 1] = { time, value };
+        } else {
+          spreadHistory.push({ time, value });
+          if (spreadHistory.length > spreadHistoryLimit) {
+            spreadHistory.splice(0, spreadHistory.length - spreadHistoryLimit);
+          }
+        }
+        spreadLastValue = value;
+        spreadSeries.setData(spreadHistory);
+      }
+
+      function updateOrderCountTag() {
+        if (!orderCountEl) {
+          return;
+        }
+        orderCountEl.textContent = pendingOrders.size;
+      }
+
+      function updateSpreadDisplay(bidPrice, askPrice) {
+        if (!spreadValueEl) {
+          return;
+        }
+        if (Number.isFinite(bidPrice) && Number.isFinite(askPrice)) {
+          const diff = Math.abs(askPrice - bidPrice);
+          spreadValueEl.textContent = numberFormatter.format(diff);
+          appendSpreadPoint(diff);
+          return;
+        }
+        spreadValueEl.textContent = "—";
+        spreadLastValue = Number.NaN;
+      }
+
+      function getCurrentBestPrices() {
+        let bestBidPrice = Number.NaN;
+        let bestAskPrice = Number.NaN;
+
+        // Try to get from depth data first if enabled
+        if (isDepthEnabled() && depthData.bids.length > 0 && depthData.asks.length > 0) {
+          bestBidPrice = Number(depthData.bids[0][0]);
+          bestAskPrice = Number(depthData.asks[0][0]);
+        }
+
+        // Fallback to pending orders if depth not available
+        if (!Number.isFinite(bestBidPrice) || !Number.isFinite(bestAskPrice)) {
+          pendingOrders.forEach((order, key) => {
+            const price = orderPrices.get(key);
+            if (!Number.isFinite(price) || price <= 0) {
+              return;
+            }
+            const side = resolveOrderSide(order);
+            if (side === "buy") {
+              if (!Number.isFinite(bestBidPrice) || price > bestBidPrice) {
+                bestBidPrice = price;
+              }
+            } else if (side === "sell") {
+              if (!Number.isFinite(bestAskPrice) || price < bestAskPrice) {
+                bestAskPrice = price;
+              }
+            }
+          });
+        }
+
+        return { bestBidPrice, bestAskPrice };
+      }
+
+      function updateSpreadPeriodically() {
+        const { bestBidPrice, bestAskPrice } = getCurrentBestPrices();
+        if (!spreadValueEl) {
+          return;
+        }
+        if (Number.isFinite(bestBidPrice) && Number.isFinite(bestAskPrice)) {
+          const diff = Math.abs(bestAskPrice - bestBidPrice);
+          spreadValueEl.textContent = numberFormatter.format(diff);
+          // Force append spread point regardless of value change
+          ensureSpreadChart();
+          if (spreadSeries) {
+            const time = Math.floor(Date.now() / 2);
+            if (spreadHistory.length && spreadHistory[spreadHistory.length - 1].time === time) {
+              spreadHistory[spreadHistory.length - 1] = { time, value: diff };
+            } else {
+              spreadHistory.push({ time, value: diff });
+              if (spreadHistory.length > spreadHistoryLimit) {
+                spreadHistory.splice(0, spreadHistory.length - spreadHistoryLimit);
+              }
+            }
+            spreadLastValue = diff;
+            spreadSeries.setData(spreadHistory);
+          }
+        }
+      }
+
+      function startSpreadUpdateTimer() {
+        stopSpreadUpdateTimer();
+        spreadUpdateIntervalId = setInterval(updateSpreadPeriodically, 100);
+      }
+
+      function stopSpreadUpdateTimer() {
+        if (spreadUpdateIntervalId !== null) {
+          clearInterval(spreadUpdateIntervalId);
+          spreadUpdateIntervalId = null;
+        }
+      }
+
+      function resolveOrderRemaining(order) {
+        const candidates = [
+          order?.left,
+          order?.left_amount,
+          order?.remain,
+          order?.remaining,
+          order?.remain_amount,
+          order?.volume,
+          order?.amount,
+        ];
+        for (const value of candidates) {
+          const num = Number(value);
+          if (Number.isFinite(num) && num > 0) {
+            return num;
+          }
+        }
+        return 0;
+      }
+
+      function handleDepthUpdate(params) {
+        if (!Array.isArray(params) || params.length < 2) {
+          appendLog(`depth.update invalid params: ${JSON.stringify(params)}`, "error");
+          return;
+        }
+        const isFull = params[0];
+        const snapshot = params[1];
+        if (!snapshot || typeof snapshot !== "object") {
+          appendLog(`depth.update invalid snapshot: ${JSON.stringify(snapshot)}`, "error");
+          return;
+        }
+
+        if (isFull) {
+          depthData.asks = Array.isArray(snapshot.asks) ? snapshot.asks : [];
+          depthData.bids = Array.isArray(snapshot.bids) ? snapshot.bids : [];
+          depthData.last = snapshot.last;
+          appendLog(`Depth full snapshot: ${depthData.bids.length} bids, ${depthData.asks.length} asks`, "success");
+        } else {
+          if (Array.isArray(snapshot.asks)) {
+            snapshot.asks.forEach(([price, amount]) => {
+              const priceStr = String(price);
+              const amountNum = Number(amount);
+              const index = depthData.asks.findIndex(([p]) => String(p) === priceStr);
+              if (amountNum === 0) {
+                if (index >= 0) {
+                  depthData.asks.splice(index, 1);
+                }
+              } else {
+                if (index >= 0) {
+                  depthData.asks[index] = [price, amount];
+                } else {
+                  depthData.asks.push([price, amount]);
+                }
+              }
+            });
+          }
+          if (Array.isArray(snapshot.bids)) {
+            snapshot.bids.forEach(([price, amount]) => {
+              const priceStr = String(price);
+              const amountNum = Number(amount);
+              const index = depthData.bids.findIndex(([p]) => String(p) === priceStr);
+              if (amountNum === 0) {
+                if (index >= 0) {
+                  depthData.bids.splice(index, 1);
+                }
+              } else {
+                if (index >= 0) {
+                  depthData.bids[index] = [price, amount];
+                } else {
+                  depthData.bids.push([price, amount]);
+                }
+              }
+            });
+          }
+          if (snapshot.last !== undefined) {
+            depthData.last = snapshot.last;
+          }
+          appendLog(`Depth incremental: ${depthData.bids.length} bids, ${depthData.asks.length} asks`);
+        }
+
+        depthData.asks.sort((a, b) => Number(a[0]) - Number(b[0]));
+        depthData.bids.sort((a, b) => Number(b[0]) - Number(a[0]));
+
+        scheduleOrderBookRender();
+      }
+
+      function scheduleOrderBookRender() {
+        if (orderBookRenderScheduled) {
+          return;
+        }
+        orderBookRenderScheduled = true;
+        scheduleFrame(renderOrderBook);
+      }
+
+      function renderOrderBook() {
+        orderBookRenderScheduled = false;
+        if (!orderBookAskBody || !orderBookBidBody) {
+          return;
+        }
+        const { bids, asks, totalBidSize, totalAskSize } = collectOrderBookLevels();
+        
+        let depthBids = [];
+        let depthAsks = [];
+        let displayBids = [];
+        let displayAsks = [];
+        
+        if (isDepthEnabled()) {
+          depthBids = depthData.bids.slice(0, ORDERBOOK_ROW_LIMIT).map(([price, amount]) => ({
+            price: Number(price),
+            amount: Number(amount),
+          }));
+          depthAsks = depthData.asks.slice(0, ORDERBOOK_ROW_LIMIT).map(([price, amount]) => ({
+            price: Number(price),
+            amount: Number(amount),
+          }));
+          displayBids = depthBids;
+          displayAsks = depthAsks;
+        } else {
+          displayBids = bids.slice(0, ORDERBOOK_ROW_LIMIT);
+          displayAsks = asks.slice(0, ORDERBOOK_ROW_LIMIT);
+        }
+        
+        renderOrderBookSection(orderBookAskBody, asks, isDepthEnabled() ? depthAsks : [], "ask");
+        renderOrderBookSection(orderBookBidBody, bids, isDepthEnabled() ? depthBids : [], "bid");
+        
+        const hasData = displayBids.length > 0 || displayAsks.length > 0;
+        if (orderBookEmptyEl) {
+          orderBookEmptyEl.hidden = hasData;
+        }
+        
+        if (orderBookMidEl && orderBookMidValueEl) {
+          let bestBid = Number.NaN;
+          let bestAsk = Number.NaN;
+          
+          if (displayBids.length > 0) {
+            bestBid = displayBids[0].price;
+          }
+          if (displayAsks.length > 0) {
+            bestAsk = displayAsks[0].price;
+          }
+          
+          if (Number.isFinite(bestBid) && Number.isFinite(bestAsk)) {
+            const mid = (bestBid + bestAsk) / 2;
+            orderBookMidEl.hidden = false;
+            orderBookMidValueEl.textContent = numberFormatter.format(mid);
+          } else {
+            orderBookMidEl.hidden = true;
+            orderBookMidValueEl.textContent = "—";
+          }
+        }
+        
+        if (orderBookFootEl && orderBookBidShareEl && orderBookAskShareEl) {
+          const totalDisplayBid = displayBids.reduce((sum, level) => sum + level.amount, 0);
+          const totalDisplayAsk = displayAsks.reduce((sum, level) => sum + level.amount, 0);
+          const total = totalDisplayBid + totalDisplayAsk;
+          if (total > 0) {
+            const bidPct = (totalDisplayBid / total) * 100;
+            const askPct = (totalDisplayAsk / total) * 100;
+            orderBookFootEl.hidden = false;
+            orderBookBidShareEl.textContent = `Bids ${bidPct.toFixed(2)}%`;
+            orderBookAskShareEl.textContent = `Asks ${askPct.toFixed(2)}%`;
+          } else {
+            orderBookFootEl.hidden = true;
+            orderBookBidShareEl.textContent = "Bids —";
+            orderBookAskShareEl.textContent = "Asks —";
+          }
+        }
+        
+        // Update active order amount summaries
+        if (orderBookSummaryTopEl && orderBookSummaryTopValueEl) {
+          if (totalAskSize > 0) {
+            orderBookSummaryTopEl.hidden = false;
+            orderBookSummaryTopValueEl.textContent = numberFormatter.format(totalAskSize);
+          } else {
+            orderBookSummaryTopEl.hidden = true;
+            orderBookSummaryTopValueEl.textContent = "—";
+          }
+        }
+        
+        if (orderBookSummaryBottomEl && orderBookSummaryBottomValueEl) {
+          if (totalBidSize > 0) {
+            orderBookSummaryBottomEl.hidden = false;
+            orderBookSummaryBottomValueEl.textContent = numberFormatter.format(totalBidSize);
+          } else {
+            orderBookSummaryBottomEl.hidden = true;
+            orderBookSummaryBottomValueEl.textContent = "—";
+          }
+        }
+      }
+
+      function collectOrderBookLevels() {
+        const bidMap = new Map();
+        const askMap = new Map();
+        pendingOrders.forEach((order, key) => {
+          const side = resolveOrderSide(order);
+          if (!side) {
+            return;
+          }
+          const price = orderPrices.get(key);
+          if (!Number.isFinite(price) || price <= 0) {
+            return;
+          }
+          const amount = resolveOrderRemaining(order);
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return;
+          }
+          const bucket = side === "buy" ? bidMap : side === "sell" ? askMap : null;
+          if (!bucket) {
+            return;
+          }
+          const keyName = price.toFixed(6);
+          const existing = bucket.get(keyName) || { price, amount: 0 };
+          existing.amount += amount;
+          bucket.set(keyName, existing);
+        });
+
+        const bidLevels = Array.from(bidMap.values()).sort((a, b) => b.price - a.price);
+        const askLevelsAscending = Array.from(askMap.values()).sort((a, b) => a.price - b.price);
+
+        const bids = accumulateLevels(bidLevels.slice(0, ORDERBOOK_ROW_LIMIT), false);
+        const asks = accumulateLevels(
+          askLevelsAscending.slice(0, ORDERBOOK_ROW_LIMIT),
+          true,
+          true
+        );
+
+        const totalBidSize = bidLevels.reduce((sum, level) => sum + level.amount, 0);
+        const totalAskSize = askLevelsAscending.reduce((sum, level) => sum + level.amount, 0);
+
+        return { bids, asks, totalBidSize, totalAskSize };
+      }
+
+      function accumulateLevels(levels, isAsk, reverseForDisplay = false) {
+        const sorted = [...levels];
+        sorted.sort((a, b) => {
+          if (isAsk) {
+            return a.price - b.price;
+          }
+          return b.price - a.price;
+        });
+        let cumulative = 0;
+        const result = sorted.map((level) => {
+          cumulative += level.amount;
+          return {
+            price: level.price,
+            amount: level.amount,
+            sum: cumulative,
+          };
+        });
+        return reverseForDisplay ? result : result;
+      }
+
+      function getOrderAmountForPrice(price, orderLevels) {
+        const priceNum = Number(price);
+        if (!Number.isFinite(priceNum)) {
+          return 0;
+        }
+        for (let i = 0; i < orderLevels.length; i++) {
+          if (Math.abs(orderLevels[i].price - priceNum) < 0.000001) {
+            return orderLevels[i].amount;
+          }
+        }
+        return 0;
+      }
+
+      function renderOrderBookSection(target, orderLevels, depthLevels, kind) {
+        target.innerHTML = "";
+        
+        const useDepth = isDepthEnabled() && depthLevels.length > 0;
+        const displayLevels = useDepth ? depthLevels : orderLevels;
+        
+        const maxDepthAmount = depthLevels.length > 0 ? Math.max(...depthLevels.map((l) => l.amount), 1) : 1;
+        const maxOrderAmount = orderLevels.length > 0 ? Math.max(...orderLevels.map((l) => l.amount), 1) : 1;
+        const maxDisplayAmount = displayLevels.length > 0 ? Math.max(...displayLevels.map((l) => l.amount), 1) : 1;
+        
+        const frag = document.createDocumentFragment();
+        
+        const displayData = kind === "ask" ? [...displayLevels].reverse() : displayLevels;
+        
+        for (let index = 0; index < ORDERBOOK_ROW_LIMIT; index++) {
+          const tr = document.createElement("tr");
+          tr.classList.add(kind);
+          
+          let dataLevel = null;
+          let hasData = false;
+          
+          if (kind === "ask") {
+            const dataIndex = index - (ORDERBOOK_ROW_LIMIT - displayData.length);
+            if (dataIndex >= 0 && dataIndex < displayData.length) {
+              dataLevel = displayData[dataIndex];
+              hasData = true;
+            }
+          } else {
+            if (index < displayData.length) {
+              dataLevel = displayData[index];
+              hasData = true;
+            }
+          }
+          
+          if (hasData && dataLevel) {
+            if (useDepth) {
+              const depthBar = document.createElement("div");
+              depthBar.className = `orderbook-depth-bar ${kind}`;
+              depthBar.style.width = `${(dataLevel.amount / maxDepthAmount) * 75}%`;
+              tr.appendChild(depthBar);
+              
+              const orderAmount = getOrderAmountForPrice(dataLevel.price, orderLevels);
+              if (orderAmount > 0) {
+                const orderBar = document.createElement("div");
+                orderBar.className = `orderbook-row-bar ${kind}`;
+                orderBar.style.width = `${(orderAmount / maxOrderAmount) * 75}%`;
+                tr.appendChild(orderBar);
+              }
+            } else {
+              const orderBar = document.createElement("div");
+              orderBar.className = `orderbook-row-bar ${kind}`;
+              orderBar.style.width = `${(dataLevel.amount / maxDisplayAmount) * 75}%`;
+              tr.appendChild(orderBar);
+            }
+            
+            const priceCell = document.createElement("span");
+            priceCell.className = "orderbook-price";
+            priceCell.textContent = numberFormatter.format(dataLevel.price);
+            const amountCell = document.createElement("span");
+            amountCell.className = "orderbook-amount";
+            amountCell.textContent = numberFormatter.format(dataLevel.amount);
+            tr.append(priceCell, amountCell);
+          } else {
+            const priceCell = document.createElement("span");
+            priceCell.className = "orderbook-price";
+            priceCell.textContent = "—";
+            const amountCell = document.createElement("span");
+            amountCell.className = "orderbook-amount";
+            amountCell.textContent = "—";
+            tr.append(priceCell, amountCell);
+          }
+          
+          frag.appendChild(tr);
+        }
+        target.appendChild(frag);
+      }
+
+      function updateBestMarkers() {
+        let nextBestBidId = null;
+        let nextBestBidPrice = Number.NaN;
+        let nextBestAskId = null;
+        let nextBestAskPrice = Number.NaN;
+
+        pendingOrders.forEach((order, key) => {
+          const price = orderPrices.get(key);
+          if (!Number.isFinite(price) || price <= 0) {
+            return;
+          }
+          const side = resolveOrderSide(order);
+          if (side === "buy") {
+            if (!Number.isFinite(nextBestBidPrice) || price > nextBestBidPrice) {
+              nextBestBidPrice = price;
+              nextBestBidId = key;
+            }
+            return;
+          }
+          if (side === "sell") {
+            if (!Number.isFinite(nextBestAskPrice) || price < nextBestAskPrice) {
+              nextBestAskPrice = price;
+              nextBestAskId = key;
+            }
+          }
+        });
+
+        if (bestBidId !== nextBestBidId) {
+          if (bestBidId && priceLines.has(bestBidId)) {
+            setLineHighlight(priceLines.get(bestBidId), false, "");
+          }
+          if (nextBestBidId && priceLines.has(nextBestBidId)) {
+            setLineHighlight(priceLines.get(nextBestBidId), true, "Bid");
+          }
+          bestBidId = nextBestBidId;
+        }
+
+        if (bestAskId !== nextBestAskId) {
+          if (bestAskId && priceLines.has(bestAskId)) {
+            setLineHighlight(priceLines.get(bestAskId), false, "");
+          }
+          if (nextBestAskId && priceLines.has(nextBestAskId)) {
+            setLineHighlight(priceLines.get(nextBestAskId), true, "Ask");
+          }
+          bestAskId = nextBestAskId;
+        }
+
+        updateSpreadDisplay(nextBestBidPrice, nextBestAskPrice);
+        scheduleOrderBookRender();
+      }
+
+      function subscribeOrders(market) {
+        appendLog(`Subscribing orders for ${market}`);
+        send({ method: "order.subscribe", params: [market], id: requestSeq++ });
+        trackSubscription("orders", true);
+      }
+
+      function subscribeDepth(market, size, mergeInterval) {
+        appendLog(`Subscribing depth ${market} size=${size} merge=${mergeInterval}`);
+        sendDepth({ method: "depth.subscribe", params: [market, size, mergeInterval], id: requestSeqDepth++ });
+        trackSubscription("depth", true);
+      }
+
+      function send(payload) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          appendLog(
+            `Attempted to send on closed socket. payload=${JSON.stringify(payload)}`,
+            "error"
+          );
+          return;
+        }
+        appendLog(
+          `>>> send method=${payload.method ?? "raw"} id=${payload.id ?? "none"} params=${JSON.stringify(
+            payload.params ?? []
+          )}`
+        );
+        ws.send(JSON.stringify(payload));
+      }
+
+      function sendDepth(payload) {
+        if (!wsDepth || wsDepth.readyState !== WebSocket.OPEN) {
+          appendLog(
+            `Attempted to send on closed depth socket. payload=${JSON.stringify(payload)}`,
+            "error"
+          );
+          return;
+        }
+        appendLog(
+          `>>> depth send method=${payload.method ?? "raw"} id=${payload.id ?? "none"} params=${JSON.stringify(
+            payload.params ?? []
+          )}`
+        );
+        wsDepth.send(JSON.stringify(payload));
+      }
+
+      function sendRpc(method, params) {
+        const id = requestSeq++;
+        appendLog(`RPC -> ${method} id=${id} params=${JSON.stringify(params ?? [])}`);
+        return new Promise((resolve, reject) => {
+          pendingRequests.set(id, { resolve, reject, method });
+          try {
+            send({ id, method, params });
+          } catch (err) {
+            pendingRequests.delete(id);
+            reject(err);
+            return;
+          }
+          setTimeout(() => {
+            if (!pendingRequests.has(id)) {
+              return;
+            }
+            pendingRequests.get(id).reject(new Error(`Timeout for ${method}`));
+            pendingRequests.delete(id);
+            appendLog(`RPC timeout for ${method} id=${id}`, "error");
+          }, 10000);
+        }).then((result) => {
+          appendLog(`RPC <- ${method} id=${id} success`);
+          return result;
+        });
+      }
+
+      function applyOrderMarker(order, statusHint) {
+        if (!order) {
+          return;
+        }
+        const { id, market } = order;
+        if (!id || !market) {
+          appendLog(`Skip order marker due to missing fields: ${JSON.stringify(order)}`, "error");
+          return;
+        }
+        const orderId = String(id);
+        const numericPrice = resolveOrderPrice(order);
+        const remaining = resolveOrderRemaining(order);
+        const statusCodeCandidates = [statusHint, order?.status, order?.state];
+        const numericStatus = statusCodeCandidates
+          .map((value) => {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : undefined;
+          })
+          .find((value) => value !== undefined);
+        const textualStatus = String(order?.status ?? order?.state ?? "").toLowerCase();
+        const terminalByStatusCode = numericStatus !== undefined && numericStatus >= 3;
+        const terminalByText = ["cancel", "finish", "fill", "done", "close"].some((token) =>
+          textualStatus.includes(token)
+        );
+        if (terminalByStatusCode || remaining <= 0 || terminalByText) {
+          appendLog(
+            `Removing marker for order ${orderId} status=${numericStatus ?? "?"} left=${remaining}`
+          );
+          removeOrderMarker(orderId);
+          return;
+        }
+        if (!Number.isFinite(numericPrice)) {
+          appendLog(`Order marker price invalid: ${JSON.stringify(order)}`, "error");
+          removeOrderMarker(orderId);
+          return;
+        }
+        const previousPrice = orderPrices.get(orderId);
+        const priceChanged = !Number.isFinite(previousPrice) || previousPrice !== numericPrice;
+        if (priceLines.has(orderId)) {
+          if (priceChanged) {
+            const line = priceLines.get(orderId);
+            line.applyOptions({ price: numericPrice });
+          }
+          pendingOrders.set(orderId, order);
+          orderPrices.set(orderId, numericPrice);
+          appendLog(`Updated existing marker for order ${orderId} @ ${numericPrice}`);
+          updateBestMarkers();
+          updateOrderCountTag();
+          return;
+        }
+
+        const side = resolveOrderSide(order);
+        const line = candleSeries.createPriceLine({
+          price: numericPrice,
+          color: side === "buy" ? "rgba(59, 130, 246, 0.7)" : "rgba(244, 114, 182, 0.7)",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: false,
+        });
+        priceLines.set(orderId, line);
+        pendingOrders.set(orderId, order);
+        orderPrices.set(orderId, numericPrice);
+        appendLog(`Created marker for order ${orderId} @ ${numericPrice}`);
+        updateBestMarkers();
+        updateOrderCountTag();
+      }
+
+      function removeOrderMarker(orderId) {
+        const key = String(orderId);
+        if (priceLines.has(key)) {
+          candleSeries.removePriceLine(priceLines.get(key));
+          priceLines.delete(key);
+        }
+        pendingOrders.delete(key);
+        orderPrices.delete(key);
+        updateBestMarkers();
+        updateOrderCountTag();
+      }
+
+      function handleUserOrdersResult(result) {
+        if (!Array.isArray(result)) {
+          appendLog(`user.orders.query unexpected payload: ${JSON.stringify(result)}`, "error");
+          return;
+        }
+        appendLog(`Processing ${result.length} pending orders`);
+        result.forEach((order) => applyOrderMarker(order, order?.status ?? order?.state));
+      }
+
+      function onMessage(event) {
+        appendLog(`<<< raw message ${event.data.slice(0, 400)}`);
+        try {
+          const payload = JSON.parse(event.data);
+          const { method, result, params, error, id } = payload;
+          if (error) {
+            appendLog(`Error ${error.code ?? ""}: ${error.message ?? "unknown"}`, "error");
+            if (id !== null && id !== undefined && pendingRequests.has(id)) {
+              pendingRequests.get(id).reject(new Error(error.message ?? "unknown"));
+              pendingRequests.delete(id);
+            }
+            return;
+          }
+          if (id !== null && id !== undefined && pendingRequests.has(id)) {
+            pendingRequests.get(id).resolve(result);
+            pendingRequests.delete(id);
+            return;
+          }
+          switch (method) {
+            case undefined: {
+              if (result?.status === "success") {
+                appendLog("Authenticated successfully", "success");
+              } else {
+                appendLog(`Unhandled response without method: ${JSON.stringify(payload)}`);
+              }
+              return;
+            }
+            case "kline.update":
+              appendLog(`kline.update rows=${params?.length ?? 0}`);
+              updateCandles(params);
+              return;
+            case "orders.update":
+            case "order.update":
+              appendLog(
+                `${method} entries=${Array.isArray(params) ? params.length : 0} payload=${JSON.stringify(
+                  params
+                )}`
+              );
+              handleOrderUpdates(params);
+              return;
+            case "user.orders.query":
+              appendLog(
+                `user.orders.query result sample=${JSON.stringify(result)?.slice(0, 200)}`
+              );
+              handleUserOrdersResult(result);
+              return;
+            default:
+              appendLog(`Unhandled method: ${method}`);
+          }
+        } catch (err) {
+          appendLog(`Malformed message: ${err.message}`, "error");
+        }
+      }
+
+      function onMessageDepth(event) {
+        appendLog(`<<< depth message ${event.data.slice(0, 200)}`);
+        try {
+          const payload = JSON.parse(event.data);
+          const { method, result, params, error, id } = payload;
+          if (error) {
+            appendLog(`Depth Error ${error.code ?? ""}: ${error.message ?? "unknown"}`, "error");
+            if (id !== null && id !== undefined && pendingRequestsDepth.has(id)) {
+              pendingRequestsDepth.get(id).reject(new Error(error.message ?? "unknown"));
+              pendingRequestsDepth.delete(id);
+            }
+            return;
+          }
+          if (id !== null && id !== undefined && pendingRequestsDepth.has(id)) {
+            pendingRequestsDepth.get(id).resolve(result);
+            pendingRequestsDepth.delete(id);
+            return;
+          }
+          switch (method) {
+            case undefined: {
+              if (result?.status === "success") {
+                appendLog("Depth authenticated successfully", "success");
+              } else {
+                appendLog(`Depth unhandled response: ${JSON.stringify(payload)}`);
+              }
+              return;
+            }
+            case "depth.update":
+              appendLog(`depth.update isFull=${params?.[0] ?? "?"}`);
+              handleDepthUpdate(params);
+              return;
+            default:
+              appendLog(`Depth unhandled method: ${method}`);
+          }
+        } catch (err) {
+          appendLog(`Depth malformed message: ${err.message}`, "error");
+        }
+      }
+
+      let skipNextReconnect = false;
+      let skipNextReconnectDepth = false;
+
+      function cleanupSocket() {
+        stopSpreadUpdateTimer();
+        if (!ws) {
+          return;
+        }
+        ws.removeEventListener("open", onOpen);
+        ws.removeEventListener("message", onMessage);
+        ws.removeEventListener("close", onClose);
+        ws.removeEventListener("error", onError);
+        try {
+          ws.close(1000);
+        } catch (_) {
+          // ignore close errors
+        }
+        ws = null;
+      }
+
+      function cleanupSocketDepth() {
+        if (!wsDepth) {
+          return;
+        }
+        wsDepth.removeEventListener("open", onOpenDepth);
+        wsDepth.removeEventListener("message", onMessageDepth);
+        wsDepth.removeEventListener("close", onCloseDepth);
+        wsDepth.removeEventListener("error", onErrorDepth);
+        try {
+          wsDepth.close(1000);
+        } catch (_) {
+          // ignore close errors
+        }
+        wsDepth = null;
+      }
+
+      function scheduleReconnect() {
+        if (!credentialsReady()) {
+          return;
+        }
+        if (reconnectTimer) {
+          return;
+        }
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          startConnection("auto-reconnect").catch((err) => {
+            appendLog(`Reconnect failed: ${err.message}`, "error");
+          });
+        }, 3000);
+      }
+
+      function scheduleReconnectDepth() {
+        if (!isDepthEnabled()) {
+          return;
+        }
+        if (!credentialsReady()) {
+          return;
+        }
+        if (reconnectTimerDepth) {
+          return;
+        }
+        reconnectTimerDepth = setTimeout(() => {
+          reconnectTimerDepth = null;
+          startDepthConnection("auto-reconnect").catch((err) => {
+            appendLog(`Depth reconnect failed: ${err.message}`, "error");
+          });
+        }, 3000);
+      }
+
+      function onOpen() {
+        appendLog("WebSocket connected", "success");
+      }
+
+      function onOpenDepth() {
+        appendLog("Depth WebSocket connected", "success");
+      }
+
+      function onClose(event) {
+        appendLog(`WebSocket closed (${event.code})`);
+        pendingRequests.forEach(({ reject }) => reject(new Error("socket closed")));
+        pendingRequests.clear();
+        trackSubscription("kline", false);
+        trackSubscription("orders", false);
+        if (skipNextReconnect) {
+          skipNextReconnect = false;
+          return;
+        }
+        scheduleReconnect();
+      }
+
+      function onCloseDepth(event) {
+        appendLog(`Depth WebSocket closed (${event.code})`);
+        pendingRequestsDepth.forEach(({ reject }) => reject(new Error("depth socket closed")));
+        pendingRequestsDepth.clear();
+        trackSubscription("depth", false);
+        if (skipNextReconnectDepth) {
+          skipNextReconnectDepth = false;
+          return;
+        }
+        scheduleReconnectDepth();
+      }
+
+      function onError(event) {
+        appendLog(`WebSocket error: ${event.message ?? "unknown"}`, "error");
+      }
+
+      function onErrorDepth(event) {
+        appendLog(`Depth WebSocket error: ${event.message ?? "unknown"}`, "error");
+      }
+
+      function credentialsReady() {
+        return Boolean(activeAccessId && activeSecretKey && hashedSecretPromise);
+      }
+
+      function clampCandleCount(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return 200;
+        }
+        const rounded = Math.round(numeric);
+        return Math.min(Math.max(rounded, 50), 500);
+      }
+
+      async function bootstrapStream({ market, intervalSeconds, candleCount, hashedPromise, revision }) {
+        try {
+          const hashedSecret = await hashedPromise;
+          if (revision !== credentialRevision) {
+            appendLog("Credentials updated during bootstrap, aborting outdated session", "error");
+            return;
+          }
+          await sendRpc("server.accessid_auth", [activeAccessId, hashedSecret]);
+          currentMarket = market;
+          currentInterval = intervalSeconds;
+          const now = Math.floor(Date.now() / 1000);
+          const end = now;
+          const start = end - intervalSeconds * candleCount;
+          appendLog("Loading initial kline set…");
+          const klineRows = await sendRpc("kline.query", [market, start, end, intervalSeconds]);
+          if (Array.isArray(klineRows)) {
+            const candles = klineRows
+              .map((entry) => ({
+                time: entry[0],
+                open: Number(entry[1]),
+                close: Number(entry[2]),
+                high: Number(entry[3]),
+                low: Number(entry[4]),
+              }))
+              .sort((a, b) => a.time - b.time);
+            candleSeries.setData(candles);
+            if (candles.length) {
+              lastCandleTime = candles[candles.length - 1].time;
+              const visibleBars = Math.min(15, candles.length);
+              chart.timeScale().setVisibleLogicalRange({
+                from: candles.length - visibleBars,
+                to: candles.length + 15,
+              });
+            }
+            appendLog(`Loaded ${candles.length} candles`, "success");
+          } else {
+            appendLog("Kline query returned unexpected payload", "error");
+          }
+          subscribeKlines(market, intervalSeconds);
+          subscribeOrders(market);
+          queryPendingOrders(market);
+          startSpreadUpdateTimer();
+        } catch (err) {
+          appendLog(`Authentication or data bootstrap failed: ${err.message}`, "error");
+          scheduleReconnect();
+        }
+      }
+
+      async function bootstrapDepthStream({ market, hashedPromise, revision }) {
+        try {
+          const hashedSecret = await hashedPromise;
+          if (revision !== credentialRevision) {
+            appendLog("Depth credentials updated during bootstrap, aborting outdated session", "error");
+            return;
+          }
+          appendLog("Authenticating depth connection…");
+          const authPayload = { method: "server.accessid_auth", params: [activeAccessId, hashedSecret], id: requestSeqDepth++ };
+          sendDepth(authPayload);
+          
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          
+          subscribeDepth(market, depthSize, depthMergeInterval);
+        } catch (err) {
+          appendLog(`Depth authentication or bootstrap failed: ${err.message}`, "error");
+          scheduleReconnectDepth();
+        }
+      }
+
+      async function startConnection(reason = "manual") {
+        if (!credentialsReady()) {
+          appendLog("Credentials not applied", "error");
+          return;
+        }
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+
+        let market = (marketSelect.value || "").trim().toUpperCase();
+        if (!market) {
+          appendLog("Market selection required", "error");
+          return;
+        }
+        marketSelect.value = market;
+
+        const intervalSeconds = Math.max(Number(intervalInput.value) || 60, 1);
+        intervalInput.value = intervalSeconds;
+        let candleCount = clampCandleCount(candleCountInput.value);
+        candleCountInput.value = candleCount;
+
+        await fetchMarketList(market);
+        market = (marketSelect.value || "").trim().toUpperCase() || market;
+        marketSelect.value = market;
+
+        ensureChart();
+        ensureSpreadChart();
+        clearChart();
+
+        skipNextReconnect = true;
+        cleanupSocket();
+        skipNextReconnect = false;
+        pendingRequests.clear();
+        trackSubscription("kline", false);
+        trackSubscription("orders", false);
+        trackSubscription("depth", false);
+
+        const revision = credentialRevision;
+        const hashedPromise = hashedSecretPromise;
+
+        try {
+          ws = new WebSocket(WS_ENDPOINT);
+        } catch (err) {
+          appendLog(`WebSocket init failed: ${err.message}`, "error");
+          scheduleReconnect();
+          return;
+        }
+
+        ws.addEventListener("open", onOpen);
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("close", onClose);
+        ws.addEventListener("error", onError);
+        ws.addEventListener("open", () => {
+          bootstrapStream({ market, intervalSeconds, candleCount, hashedPromise, revision }).catch(
+            (err) => appendLog(`Bootstrap failed: ${err.message}`, "error")
+          );
+        });
+
+        if (isDepthEnabled()) {
+          startDepthConnection(reason, market, revision, hashedPromise).catch((err) => {
+            appendLog(`Depth connection failed: ${err.message}`, "error");
+          });
+        } else {
+          appendLog("Depth subscription disabled by user");
+        }
+      }
+
+      async function startDepthConnection(reason = "manual", market, revision, hashedPromise) {
+        if (!isDepthEnabled()) {
+          appendLog("Depth connection skipped (disabled)");
+          return;
+        }
+        if (!credentialsReady()) {
+          appendLog("Credentials not ready for depth connection", "error");
+          return;
+        }
+        if (!market) {
+          market = currentMarket;
+        }
+        if (!market) {
+          appendLog("No market for depth connection", "error");
+          return;
+        }
+
+        clearTimeout(reconnectTimerDepth);
+        reconnectTimerDepth = null;
+
+        skipNextReconnectDepth = true;
+        cleanupSocketDepth();
+        skipNextReconnectDepth = false;
+        pendingRequestsDepth.clear();
+        trackSubscription("depth", false);
+
+        if (!revision) {
+          revision = credentialRevision;
+        }
+        if (!hashedPromise) {
+          hashedPromise = hashedSecretPromise;
+        }
+
+        try {
+          wsDepth = new WebSocket(WS_ENDPOINT);
+        } catch (err) {
+          appendLog(`Depth WebSocket init failed: ${err.message}`, "error");
+          scheduleReconnectDepth();
+          return;
+        }
+
+        wsDepth.addEventListener("open", onOpenDepth);
+        wsDepth.addEventListener("message", onMessageDepth);
+        wsDepth.addEventListener("close", onCloseDepth);
+        wsDepth.addEventListener("error", onErrorDepth);
+        wsDepth.addEventListener("open", () => {
+          bootstrapDepthStream({ market, hashedPromise, revision }).catch(
+            (err) => appendLog(`Depth bootstrap failed: ${err.message}`, "error")
+          );
+        });
+      }
+
+      function handleCredentialRefresh() {
+        access = "{{ACCESS_ID}}";
+        secret = "{{SECRET_KEY}}";
+        credentialRevision += 1;
+        hashedSecretPromise = hashSecret(secret);
+        startConnection("credentials").catch((err) => {
+          appendLog(`Connection failed: ${err.message}`, "error");
+        });
+      }
+
+      function handleSelectionChange() {
+        if (!credentialsReady()) {
+          return;
+        }
+        startConnection("selection-change").catch((err) => {
+          appendLog(`Reconnect failed: ${err.message}`, "error");
+        });
+      }
+
+      window.addEventListener("beforeunload", () => {
+        skipNextReconnect = true;
+        skipNextReconnectDepth = true;
+        cleanupSocket();
+        cleanupSocketDepth();
+      });
+
+      form.addEventListener("submit", (event) => event.preventDefault());
+      // applyCredentialsBtn.addEventListener("click", handleCredentialRefresh);
+      marketSelect.addEventListener("change", handleSelectionChange);
+      intervalInput.addEventListener("change", handleSelectionChange);
+      candleCountInput.addEventListener("change", () => {
+        candleCountInput.value = clampCandleCount(candleCountInput.value);
+        handleSelectionChange();
+      });
+      enableDepthInput.addEventListener("change", handleSelectionChange);
+
+      populateMarketOptions("SOLUSDT");
+
+window.addEventListener("load", async () => {
+  try {
+    await fetchMarketList(marketSelect.value || "SOLUSDT");
+  } catch (err) {
+    appendLog(`Initial market fetch failed: ${err.message}`, "error");
+  }
+  ensureChart();
+  ensureSpreadChart();
+
+  const presetAccess = "{{ACCESS_ID}}";
+  const presetSecret = "{{SECRET_KEY}}";
+  if (presetAccess && presetSecret) {
+    handleCredentialRefresh();
+  }
+});
+    </script>
+  </body>
+</html>

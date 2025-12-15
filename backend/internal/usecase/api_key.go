@@ -10,7 +10,6 @@ import (
 
 var (
 	ErrAPIKeyNotFound    = errors.New("api key not found")
-	ErrAPIKeyUnauthorized = errors.New("unauthorized to access this api key")
 	ErrInvalidPlatform   = errors.New("invalid platform")
 	ErrAPIKeyNameEmpty   = errors.New("api key name is required")
 	ErrAPIKeyEmpty       = errors.New("api key is required")
@@ -29,7 +28,7 @@ func NewAPIKeyUseCase(apiKeyRepo adaptor.APIKeyRepository) *APIKeyUseCase {
 	}
 }
 
-func (uc *APIKeyUseCase) Create(ctx context.Context, userID int64, req *model.CreateAPIKeyRequest) (*model.APIKeyResponse, error) {
+func (uc *APIKeyUseCase) Create(ctx context.Context, req *model.CreateAPIKeyRequest) (*model.APIKeyResponse, error) {
 	if req.Name == "" {
 		return nil, ErrAPIKeyNameEmpty
 	}
@@ -44,7 +43,6 @@ func (uc *APIKeyUseCase) Create(ctx context.Context, userID int64, req *model.Cr
 	}
 
 	apiKey := &model.APIKey{
-		UserID:    userID,
 		Name:      req.Name,
 		Platform:  req.Platform,
 		APIKey:    req.APIKey,
@@ -61,7 +59,7 @@ func (uc *APIKeyUseCase) Create(ctx context.Context, userID int64, req *model.Cr
 	return &response, nil
 }
 
-func (uc *APIKeyUseCase) GetByID(ctx context.Context, userID, id int64) (*model.APIKeyResponse, error) {
+func (uc *APIKeyUseCase) GetByID(ctx context.Context, id string) (*model.APIKeyResponse, error) {
 	apiKey, err := uc.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -69,16 +67,13 @@ func (uc *APIKeyUseCase) GetByID(ctx context.Context, userID, id int64) (*model.
 	if apiKey == nil {
 		return nil, ErrAPIKeyNotFound
 	}
-	if apiKey.UserID != userID {
-		return nil, ErrAPIKeyUnauthorized
-	}
 
 	response := apiKey.ToResponse()
 	return &response, nil
 }
 
-func (uc *APIKeyUseCase) List(ctx context.Context, userID int64) ([]model.APIKeyResponse, error) {
-	apiKeys, err := uc.apiKeyRepo.GetByUserID(ctx, userID)
+func (uc *APIKeyUseCase) List(ctx context.Context) ([]model.APIKeyResponse, error) {
+	apiKeys, err := uc.apiKeyRepo.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -91,16 +86,13 @@ func (uc *APIKeyUseCase) List(ctx context.Context, userID int64) ([]model.APIKey
 	return responses, nil
 }
 
-func (uc *APIKeyUseCase) Update(ctx context.Context, userID, id int64, req *model.UpdateAPIKeyRequest) (*model.APIKeyResponse, error) {
+func (uc *APIKeyUseCase) Update(ctx context.Context, id string, req *model.UpdateAPIKeyRequest) (*model.APIKeyResponse, error) {
 	apiKey, err := uc.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if apiKey == nil {
 		return nil, ErrAPIKeyNotFound
-	}
-	if apiKey.UserID != userID {
-		return nil, ErrAPIKeyUnauthorized
 	}
 
 	if req.Name != nil {
@@ -136,16 +128,13 @@ func (uc *APIKeyUseCase) Update(ctx context.Context, userID, id int64, req *mode
 	return &response, nil
 }
 
-func (uc *APIKeyUseCase) Delete(ctx context.Context, userID, id int64) error {
+func (uc *APIKeyUseCase) Delete(ctx context.Context, id string) error {
 	apiKey, err := uc.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if apiKey == nil {
 		return ErrAPIKeyNotFound
-	}
-	if apiKey.UserID != userID {
-		return ErrAPIKeyUnauthorized
 	}
 
 	return uc.apiKeyRepo.Delete(ctx, id)

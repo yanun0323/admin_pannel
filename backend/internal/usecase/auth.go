@@ -20,16 +20,16 @@ import (
 var _ adaptor.AuthUseCase = (*AuthUseCase)(nil)
 
 var (
-	ErrUserNotFound         = errors.New("user not found")
-	ErrUserAlreadyExists    = errors.New("user already exists")
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrUserInactive         = errors.New("user is inactive")
-	ErrUserNotActivated     = errors.New("user account not activated")
-	ErrInvalidToken         = errors.New("invalid token")
-	ErrIncorrectPassword    = errors.New("incorrect current password")
-	ErrPasswordSameAsOld    = errors.New("new password cannot be the same as current password")
-	ErrInvalidTOTPCode      = errors.New("invalid TOTP code")
-	ErrTOTPNotSetup         = errors.New("TOTP is not set up")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUserAlreadyExists  = errors.New("user already exists")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUserInactive       = errors.New("user is inactive")
+	ErrUserNotActivated   = errors.New("user account not activated")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrIncorrectPassword  = errors.New("incorrect current password")
+	ErrPasswordSameAsOld  = errors.New("new password cannot be the same as current password")
+	ErrInvalidTOTPCode    = errors.New("invalid TOTP code")
+	ErrTOTPNotSetup       = errors.New("TOTP is not set up")
 )
 
 type AuthUseCase struct {
@@ -99,7 +99,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 	}
 
 	totpSecret := key.Secret()
-	var userID int64
+	var userID string
 
 	if existingUser != nil {
 		// User exists but not activated - update their credentials and TOTP secret
@@ -166,7 +166,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 	}, nil
 }
 
-func (uc *AuthUseCase) ActivateAccount(ctx context.Context, userID int64, code string) error {
+func (uc *AuthUseCase) ActivateAccount(ctx context.Context, userID string, code string) error {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return err
@@ -236,7 +236,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, username, password string) (*m
 	}, nil
 }
 
-func (uc *AuthUseCase) VerifyTOTP(ctx context.Context, userID int64, code string) (string, *model.UserWithRoles, error) {
+func (uc *AuthUseCase) VerifyTOTP(ctx context.Context, userID string, code string) (string, *model.UserWithRoles, error) {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return "", nil, err
@@ -309,12 +309,12 @@ func (uc *AuthUseCase) ValidateToken(ctx context.Context, tokenString string) (*
 		return nil, ErrInvalidToken
 	}
 
-	userID, ok := claims["user_id"].(float64)
+	userID, ok := claims["user_id"].(string)
 	if !ok {
 		return nil, ErrInvalidToken
 	}
 
-	user, err := uc.userRepo.GetByID(ctx, int64(userID))
+	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +343,7 @@ func (uc *AuthUseCase) ValidateToken(ctx context.Context, tokenString string) (*
 	}, nil
 }
 
-func (uc *AuthUseCase) HasPermission(ctx context.Context, userID int64, permission enum.Permission) (bool, error) {
+func (uc *AuthUseCase) HasPermission(ctx context.Context, userID string, permission enum.Permission) (bool, error) {
 	permissions, err := uc.userRoleRepo.GetUserPermissions(ctx, userID)
 	if err != nil {
 		return false, err
@@ -357,7 +357,7 @@ func (uc *AuthUseCase) HasPermission(ctx context.Context, userID int64, permissi
 	return false, nil
 }
 
-func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID string, currentPassword, newPassword string) error {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return err
@@ -385,7 +385,7 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID int64, current
 	return uc.userRepo.UpdatePassword(ctx, userID, string(hashedPassword))
 }
 
-func (uc *AuthUseCase) generateToken(userID int64, username string) (string, error) {
+func (uc *AuthUseCase) generateToken(userID string, username string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":  userID,
 		"username": username,
@@ -433,7 +433,7 @@ func (uc *AuthUseCase) generateTOTPSetup(ctx context.Context, user *model.User) 
 	}, nil
 }
 
-func (uc *AuthUseCase) SetupTOTPRebind(ctx context.Context, userID int64, password string) (*model.TOTPSetup, error) {
+func (uc *AuthUseCase) SetupTOTPRebind(ctx context.Context, userID string, password string) (*model.TOTPSetup, error) {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -481,7 +481,7 @@ func (uc *AuthUseCase) SetupTOTPRebind(ctx context.Context, userID int64, passwo
 	}, nil
 }
 
-func (uc *AuthUseCase) ConfirmTOTPRebind(ctx context.Context, userID int64, code string) error {
+func (uc *AuthUseCase) ConfirmTOTPRebind(ctx context.Context, userID string, code string) error {
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return err
@@ -503,6 +503,6 @@ func (uc *AuthUseCase) ConfirmTOTPRebind(ctx context.Context, userID int64, code
 	return uc.userRepo.ConfirmTOTPRebind(ctx, userID)
 }
 
-func (uc *AuthUseCase) CancelTOTPRebind(ctx context.Context, userID int64) error {
+func (uc *AuthUseCase) CancelTOTPRebind(ctx context.Context, userID string) error {
 	return uc.userRepo.ClearPendingTOTPSecret(ctx, userID)
 }

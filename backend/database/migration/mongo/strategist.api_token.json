@@ -1,0 +1,11 @@
+[{
+  "_id": {
+    "$oid": "6937dc0457b5c4ad96495962"
+  },
+  "name": "btcc staging",
+  "platform": "btcc",
+  "testnet": true,
+  "enable": true,
+  "api_key": "8e650365-1853-4e86-a64b-6bd989a100e8",
+  "api_secret": "219ff50a-87f5-4e88-a75c-d247f4112777"
+}]

@@ -1,13 +1,13 @@
-import { createSignal, createRoot } from 'solid-js';
+import { createRoot, createSignal } from 'solid-js';
 import { api, type User } from '../lib/api';
 
 interface PendingTOTP {
-  userId: number;
+  userId: string;
   username: string;
 }
 
 interface PendingTOTPSetup {
-  userId: number;
+  userId: string;
   username: string;
   secret: string;
   qrCode: string;
