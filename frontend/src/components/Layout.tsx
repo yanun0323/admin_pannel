@@ -1,5 +1,5 @@
 import { A, useLocation, useNavigate } from '@solidjs/router';
-import { FiHome, FiKey, FiLogOut, FiSettings, FiUser } from 'solid-icons/fi';
+import { FiActivity, FiHome, FiKey, FiLogOut, FiSettings, FiTrendingUp, FiUser } from 'solid-icons/fi';
 import { type Component, type JSX, Show } from 'solid-js';
 import { authStore } from '../stores/auth';
 
@@ -31,6 +31,18 @@ const Layout: Component<LayoutProps> = (props) => {
           <Show when={authStore.hasPermission('manage:api_keys')}>
             <A href="/api-keys" class={`nav-item ${isActive('/api-keys') ? 'active' : ''}`} title="API Keys">
               <FiKey />
+            </A>
+          </Show>
+
+          <Show when={authStore.hasPermission('manage:settings')}>
+            <A href="/trading-bot" class={`nav-item ${isActive('/trading-bot') ? 'active' : ''}`} title="Trading Bot">
+              <FiTrendingUp />
+            </A>
+          </Show>
+
+          <Show when={authStore.hasPermission('view:kline')}>
+            <A href="/trading-bot-monitor" class={`nav-item ${isActive('/trading-bot-monitor') ? 'active' : ''}`} title="Trading Bot Monitor">
+              <FiActivity />
             </A>
           </Show>
 

@@ -236,7 +236,7 @@ export interface SpreadRecord {
 
 export interface TradingMessage {
   action: 'connect' | 'subscribe' | 'unsubscribe';
-  type?: 'kline' | 'orderbook' | 'orders';
+  type?: 'kline' | 'orderbook' | 'order';
   apiKeyId?: string;
   symbol?: string;
   interval?: string;
@@ -437,10 +437,10 @@ class TradingWebSocket {
     });
   }
 
-  subscribeOrders(symbol: string): void {
+  subscribeOrder(symbol: string): void {
     this.send({
       action: 'subscribe',
-      type: 'orders',
+      type: 'order',
       symbol,
     });
   }
@@ -448,7 +448,7 @@ class TradingWebSocket {
   unsubscribeOrders(symbol: string): void {
     this.send({
       action: 'unsubscribe',
-      type: 'orders',
+      type: 'order',
       symbol,
     });
   }

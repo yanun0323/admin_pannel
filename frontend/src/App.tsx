@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import RBAC from './pages/RBAC';
 import Register from './pages/Register';
 import TradingBot from './pages/TradingBot';
+import TradingBotMonitor from './pages/TradingBotMonitor';
 import { authStore } from './stores/auth';
 
 const App: Component = () => {
@@ -62,8 +63,16 @@ const App: Component = () => {
         <Route
           path="/trading-bot"
           component={() => (
-            <ProtectedRoute permission="manage:switchers">
+            <ProtectedRoute permission="manage:settings">
               <TradingBot />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/trading-bot-monitor"
+          component={() => (
+            <ProtectedRoute>
+              <TradingBotMonitor />
             </ProtectedRoute>
           )}
         />

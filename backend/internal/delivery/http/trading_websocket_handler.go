@@ -10,6 +10,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +46,7 @@ type ClientState struct {
 	UserID        string
 	APIKeyID      string
 	Subscriptions map[string]bool // subscription key -> active
+	BlockedSubs   map[string]bool // subscription key -> block streaming until ready (e.g. while sending history)
 }
 
 // ExchangeConnection manages connection to an exchange
@@ -69,6 +72,7 @@ type ExchangeConnection struct {
 	// BTCC specific
 	btccMsgID  int64 // atomic counter for BTCC message IDs
 	btccAuthed bool  // whether BTCC connection is authenticated
+	btccAuthID int64 // last auth request id (used to disambiguate auth vs subscribe ack)
 
 	mu     sync.RWMutex
 	done   chan struct{}
@@ -151,6 +155,7 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	m.clients[conn] = &ClientState{
 		UserID:        user.ID,
 		Subscriptions: make(map[string]bool),
+		BlockedSubs:   make(map[string]bool),
 	}
 	m.mu.Unlock()
 
@@ -323,12 +328,39 @@ func (m *TradingStreamManager) handleSubscribe(conn *websocket.Conn, userID stri
 		return
 	}
 
+	subKey := m.subscriptionKey(msg.Type, msg.Symbol, msg.Interval)
+	m.mu.Lock()
+	if s, ok := m.clients[conn]; ok {
+		s.Subscriptions[subKey] = true
+		if msg.Type == "kline" {
+			s.Subscriptions[m.subscriptionKey(msg.Type, msg.Symbol, "")] = true
+		}
+	}
+	m.mu.Unlock()
+
 	switch msg.Type {
 	case "kline":
+		if ec.Platform == model.PlatformBTCC {
+			m.mu.Lock()
+			if s, ok := m.clients[conn]; ok {
+				s.BlockedSubs[subKey] = true
+				s.BlockedSubs[m.subscriptionKey(msg.Type, msg.Symbol, "")] = true
+			}
+			m.mu.Unlock()
+
+			m.sendBTCCKlineHistory(conn, ec, msg.Symbol, msg.Interval)
+
+			m.mu.Lock()
+			if s, ok := m.clients[conn]; ok {
+				delete(s.BlockedSubs, subKey)
+				delete(s.BlockedSubs, m.subscriptionKey(msg.Type, msg.Symbol, ""))
+			}
+			m.mu.Unlock()
+		}
 		m.subscribeKline(conn, ec, msg.Symbol, msg.Interval)
 	case "orderbook", "depth":
 		m.subscribeOrderBook(conn, ec, msg.Symbol)
-	case "orders":
+	case "order":
 		m.subscribeOrders(conn, ec, msg.Symbol)
 	case "asset":
 		// Asset subscription (BTCC specific)
@@ -448,7 +480,7 @@ func (m *TradingStreamManager) subscribeOrders(conn *websocket.Conn, ec *Exchang
 	// Orders require private WebSocket connection
 	ec.mu.Lock()
 	needConnect := ec.PrivateWS == nil
-	streamName := "orders." + symbol
+	streamName := "order." + symbol
 	ec.PrivateSubs[streamName] = true
 	ec.mu.Unlock()
 
@@ -493,6 +525,18 @@ func (m *TradingStreamManager) handleUnsubscribe(conn *websocket.Conn, msg *mode
 		return
 	}
 
+	subKey := m.subscriptionKey(msg.Type, msg.Symbol, msg.Interval)
+	m.mu.Lock()
+	if s, ok := m.clients[conn]; ok {
+		delete(s.Subscriptions, subKey)
+		delete(s.BlockedSubs, subKey)
+		if msg.Type == "kline" {
+			delete(s.Subscriptions, m.subscriptionKey(msg.Type, msg.Symbol, ""))
+			delete(s.BlockedSubs, m.subscriptionKey(msg.Type, msg.Symbol, ""))
+		}
+	}
+	m.mu.Unlock()
+
 	switch msg.Type {
 	case "kline":
 		streamName := m.formatKlineStream(ec.Platform, msg.Symbol, msg.Interval)
@@ -517,13 +561,13 @@ func (m *TradingStreamManager) handleUnsubscribe(conn *websocket.Conn, msg *mode
 		}
 
 	case "orders":
+		streamName := "orders." + msg.Symbol
 		ec.mu.Lock()
-		delete(ec.PrivateSubs, msg.Symbol)
+		delete(ec.PrivateSubs, streamName)
 		ec.mu.Unlock()
 
 		// For BTCC, send unsubscription message
 		if ec.Platform == model.PlatformBTCC {
-			streamName := "orders." + msg.Symbol
 			m.sendBTCCUnsubscription(ec, streamName, true)
 		}
 
@@ -671,9 +715,9 @@ func (m *TradingStreamManager) sendBTCCSubscription(ec *ExchangeConnection, stre
 		// state.subscribe: no params
 		method = "state.subscribe"
 		params = []interface{}{}
-	case "orders":
-		// orders.subscribe: [market] (optional)
-		method = "orders.subscribe"
+	case "order":
+		// order.subscribe: [market] (optional)
+		method = "order.subscribe"
 		if len(parts) >= 2 && parts[1] != "" {
 			params = []interface{}{parts[1]}
 		} else {
@@ -725,8 +769,8 @@ func (m *TradingStreamManager) sendBTCCUnsubscription(ec *ExchangeConnection, st
 		method = "deals.unsubscribe"
 	case "state":
 		method = "state.unsubscribe"
-	case "orders":
-		method = "orders.unsubscribe"
+	case "order":
+		method = "order.unsubscribe"
 	case "asset":
 		method = "asset.unsubscribe"
 	default:
@@ -1034,17 +1078,26 @@ func (m *TradingStreamManager) handleBTCCPushNotification(ec *ExchangeConnection
 			log.Printf("BTCC order.update parse error: %v", err)
 			return
 		}
-		if len(orderParams) < 1 {
+		if len(orderParams) != 2 {
 			return
 		}
 
-		var orderData map[string]interface{}
-		if err := json.Unmarshal(orderParams[0], &orderData); err != nil {
+		var (
+			status    int
+			orderData map[string]interface{}
+		)
+		if err := json.Unmarshal(orderParams[0], &status); err != nil {
+			log.Printf("BTCC order.update: parse order status error: %v, params=%s", err, string(params))
+			return
+		}
+
+		if err := json.Unmarshal(orderParams[1], &orderData); err != nil || orderData == nil {
+			log.Printf("BTCC order.update: parse order object error: %v, params=%s", err, string(params))
 			return
 		}
 
 		response.Type = "order"
-		response.Data = m.parseBTCCOrder(orderData)
+		response.Data = m.parseBTCCOrder(orderData, status)
 		if market, ok := orderData["market"].(string); ok {
 			response.Symbol = market
 		}
@@ -1070,6 +1123,9 @@ func (m *TradingStreamManager) parseBTCCKline(kline []interface{}) map[string]in
 	result := make(map[string]interface{})
 	if len(kline) >= 8 {
 		result["timestamp"] = kline[0]
+		if sec, ok := m.parseUnixSeconds(kline[0]); ok {
+			result["time"] = sec * 1000
+		}
 		result["open"] = kline[1]
 		result["close"] = kline[2]
 		result["high"] = kline[3]
@@ -1079,6 +1135,146 @@ func (m *TradingStreamManager) parseBTCCKline(kline []interface{}) map[string]in
 		result["market"] = kline[7]
 	}
 	return result
+}
+
+func (m *TradingStreamManager) parseUnixSeconds(v interface{}) (int64, bool) {
+	switch t := v.(type) {
+	case int64:
+		return t, true
+	case int:
+		return int64(t), true
+	case float64:
+		return int64(t), true
+	case json.Number:
+		sec, err := t.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return sec, true
+	default:
+		return 0, false
+	}
+}
+
+func (m *TradingStreamManager) subscriptionKey(typ, symbol, interval string) string {
+	s := strings.ToUpper(strings.TrimSpace(symbol))
+	i := strings.TrimSpace(interval)
+	t := strings.ToLower(strings.TrimSpace(typ))
+	switch t {
+	case "depth", "orderbook":
+		t = "orderbook"
+	case "orders", "order":
+		t = "order"
+	case "deals", "trades":
+		t = "trades"
+	}
+	if t == "kline" {
+		if s == "" {
+			return "kline"
+		}
+		if i == "" {
+			return "kline:" + s
+		}
+		return "kline:" + s + ":" + i
+	}
+	if s == "" {
+		return t
+	}
+	return t + ":" + s
+}
+
+func (m *TradingStreamManager) sendBTCCKlineHistory(conn *websocket.Conn, ec *ExchangeConnection, symbol, interval string) {
+	intervalSeconds := m.convertIntervalToSeconds(interval)
+	if intervalSeconds <= 0 {
+		intervalSeconds = 60
+	}
+
+	end := time.Now().Unix()
+	start := end - int64(intervalSeconds*100)
+	if start < 0 {
+		start = 0
+	}
+
+	u, err := url.Parse(ec.Config.BaseRESTURL)
+	if err != nil {
+		log.Printf("BTCC kline history: invalid base url: %v", err)
+		return
+	}
+	u.Path = strings.TrimSuffix(u.Path, "/") + "/btcc_api_trade/market/kline"
+
+	q := u.Query()
+	q.Set("market", symbol)
+	q.Set("start_time", strconv.FormatInt(start, 10))
+	q.Set("end_time", strconv.FormatInt(end, 10))
+	q.Set("interval", strconv.Itoa(intervalSeconds))
+	u.RawQuery = q.Encode()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		log.Printf("BTCC kline history: new request: %v", err)
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("BTCC kline history: request: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		log.Printf("BTCC kline history: status=%d body=%s", resp.StatusCode, string(body))
+		return
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("ERROR: read kline history body, err: %+v", err)
+		return
+	}
+
+	log.Printf("kline history raw data: %s", string(body))
+
+	var decoded struct {
+		Error  any             `json:"error"`
+		Result [][]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		log.Printf("BTCC kline history: decode: %v", err)
+		return
+	}
+	if decoded.Error != nil {
+		log.Printf("BTCC kline history: error=%+v", decoded.Error)
+		return
+	}
+
+	log.Printf("kline history decoded data: %+v", decoded)
+
+	rows := decoded.Result
+	if len(rows) == 0 {
+		return
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		a, okA := m.parseUnixSeconds(rows[i][0])
+		b, okB := m.parseUnixSeconds(rows[j][0])
+		if !okA || !okB {
+			return i < j
+		}
+		return a < b
+	})
+
+	for _, row := range rows {
+		m.sendToClient(conn, model.TradingWebSocketResponse{
+			Type:      "kline",
+			Platform:  ec.Platform.String(),
+			Symbol:    symbol,
+			Timestamp: time.Now().UnixMilli(),
+			Data:      m.parseBTCCKline(row),
+		})
+	}
 }
 
 // parseBTCCDepth parses BTCC depth data into OrderBook format
@@ -1142,7 +1338,7 @@ func (m *TradingStreamManager) parseBTCCDepth(data map[string]interface{}, isFul
 }
 
 // parseBTCCOrder parses BTCC order data
-func (m *TradingStreamManager) parseBTCCOrder(data map[string]interface{}) *model.Order {
+func (m *TradingStreamManager) parseBTCCOrder(data map[string]interface{}, status int) *model.Order {
 	order := &model.Order{
 		Platform: model.PlatformBTCC,
 	}
@@ -1178,15 +1374,27 @@ func (m *TradingStreamManager) parseBTCCOrder(data map[string]interface{}) *mode
 	if v, ok := data["deal_stock"].(string); ok {
 		order.ExecutedQty = v
 	}
-	if v, ok := data["left"].(string); ok {
-		// Calculate status based on left amount
-		leftQty, _ := strconv.ParseFloat(v, 64)
-		if leftQty == 0 {
-			order.Status = "FILLED"
+
+	switch status {
+	case 1:
+		order.Status = "PLACED"
+	case 2:
+		order.Status = "PARTIALLY_FILLED"
+	case 3:
+		if v, ok := data["left"].(string); ok {
+			leftQty, _ := strconv.ParseFloat(v, 64)
+			if leftQty == 0 {
+				order.Status = "FILLED"
+			} else {
+				order.Status = "CANCELED"
+			}
 		} else {
-			order.Status = "PARTIALLY_FILLED"
+			order.Status = "FILLED"
 		}
+	default:
+		order.Status = "UNKNOWN"
 	}
+
 	if v, ok := data["option"].(float64); ok {
 		// BTCC: 0=GTC, 8=IOC, 16=FOK
 		switch int(v) {
@@ -1414,6 +1622,7 @@ func (m *TradingStreamManager) connectBTCCPrivate(ec *ExchangeConnection) {
 
 	// Mark as authenticated (will be confirmed by response)
 	ec.btccAuthed = false
+	ec.btccAuthID = msgID
 
 	// Start reading private messages
 	go m.readBTCCPrivateMessages(ec)
@@ -1487,7 +1696,12 @@ func (m *TradingStreamManager) handleBTCCPrivateMessage(ec *ExchangeConnection, 
 	}
 
 	// Handle authentication response
-	if btccResp.ID != nil && btccResp.Result != nil {
+	ec.mu.RLock()
+	authID := ec.btccAuthID
+	alreadyAuthed := ec.btccAuthed
+	ec.mu.RUnlock()
+
+	if btccResp.ID != nil && *btccResp.ID == authID && btccResp.Result != nil && !alreadyAuthed {
 		var authResult struct {
 			Status string `json:"status"`
 			Flag   int64  `json:"flag"`
@@ -1506,6 +1720,11 @@ func (m *TradingStreamManager) handleBTCCPrivateMessage(ec *ExchangeConnection, 
 				return
 			}
 		}
+	}
+
+	// Other request responses (e.g. subscribe/unsubscribe acks)
+	if btccResp.ID != nil {
+		return
 	}
 
 	// Handle push notifications (id is null)
@@ -1619,7 +1838,16 @@ func (m *TradingStreamManager) broadcastToClients(ec *ExchangeConnection, respon
 	}
 	ec.mu.RUnlock()
 
+	subKey := m.subscriptionKey(response.Type, response.Symbol, "")
+
 	for _, client := range clients {
+		m.mu.RLock()
+		state := m.clients[client]
+		isAllowed := state != nil && state.Subscriptions[subKey] && !state.BlockedSubs[subKey]
+		m.mu.RUnlock()
+		if !isAllowed {
+			continue
+		}
 		m.sendToClient(client, response)
 	}
 }

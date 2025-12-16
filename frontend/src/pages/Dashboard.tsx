@@ -29,22 +29,9 @@ const Dashboard: Component = () => {
         <section class="section">
           <h2>Quick Access</h2>
           <div class="cards">
-            <Show when={authStore.hasPermission('view:kline')}>
-              <A href="/kline" class="card">
-                <div class="card-icon blue">
-                  <FiTrendingUp />
-                </div>
-                <div class="card-content">
-                  <h3>K-Line Charts</h3>
-                  <p>View real-time trading charts</p>
-                </div>
-                <FiArrowRight class="card-arrow" />
-              </A>
-            </Show>
-
             <Show when={authStore.hasPermission('manage:roles')}>
               <A href="/rbac" class="card">
-                <div class="card-icon green">
+                <div class="card-icon red">
                   <FiShield />
                 </div>
                 <div class="card-content">
@@ -57,7 +44,7 @@ const Dashboard: Component = () => {
 
             <Show when={authStore.hasPermission('manage:api_keys')}>
               <A href="/api-keys" class="card">
-                <div class="card-icon blue">
+                <div class="card-icon green">
                   <FiKey />
                 </div>
                 <div class="card-content">
@@ -68,9 +55,9 @@ const Dashboard: Component = () => {
               </A>
             </Show>
 
-            <Show when={authStore.hasPermission('manage:switchers')}>
+            <Show when={authStore.hasPermission('manage:settings')}>
               <A href="/trading-bot" class="card">
-                <div class="card-icon purple">
+                <div class="card-icon cyan">
                   <FiTrendingUp />
                 </div>
                 <div class="card-content">
@@ -81,16 +68,18 @@ const Dashboard: Component = () => {
               </A>
             </Show>
 
-            <A href="/trading-bot-monitor" class="card">
-              <div class="card-icon cyan">
-                <FiActivity />
-              </div>
-              <div class="card-content">
-                <h3>Trading Bot Monitor</h3>
-                <p>Real-time K-line and order tracking</p>
-              </div>
-              <FiArrowRight class="card-arrow" />
-            </A>
+            <Show when={authStore.hasPermission('view:kline')}>
+              <A href="/trading-bot-monitor" class="card">
+                <div class="card-icon blue">
+                  <FiActivity />
+                </div>
+                <div class="card-content">
+                  <h3>Trading Bot Monitor</h3>
+                  <p>Real-time K-line and order tracking</p>
+                </div>
+                <FiArrowRight class="card-arrow" />
+              </A>
+            </Show>
 
             <A href="/change-password" class="card">
               <div class="card-icon orange">
@@ -128,7 +117,7 @@ const Dashboard: Component = () => {
             </div>
           </section>
         </div>
-      </div>
+      </div >
 
       <style>{`
         .dashboard {
@@ -224,6 +213,16 @@ const Dashboard: Component = () => {
           color: var(--primary);
         }
 
+        .card-icon.purple {
+          background: rgba(206, 59, 246, 0.1);
+          color: var(--primary);
+        }
+
+        .card-icon.cyan {
+          background: rgba(59, 187, 246, 0.1);
+          color: var(--primary);
+        }
+
         .card-icon.green {
           background: rgba(34, 197, 94, 0.1);
           color: var(--success);
@@ -232,6 +231,11 @@ const Dashboard: Component = () => {
         .card-icon.orange {
           background: rgba(245, 158, 11, 0.1);
           color: var(--warning);
+        }
+
+        .card-icon.red {
+          background: rgba(245, 11, 11, 0.1);
+          color: var(--error);
         }
 
         .card-content {
@@ -299,7 +303,7 @@ const Dashboard: Component = () => {
           }
         }
       `}</style>
-    </Layout>
+    </Layout >
   );
 };
 
