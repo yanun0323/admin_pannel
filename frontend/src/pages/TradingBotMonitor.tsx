@@ -243,19 +243,16 @@ const TradingBotMonitor: Component = () => {
         if (!Number.isFinite(qty) || qty <= 0) return 0;
         const maxQty = side === 'ask' ? maxAskQty() : maxBidQty();
         if (maxQty <= 0) return 0;
-        let ratio = (qty / maxQty);
-        ratio *= 0.6
-        ratio = Math.max(0.01, ratio)
-        return ratio * 100;
+        const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        const scaled = ratio * 0.6; // cap at 60% of row width
+        return Math.max(0.01, scaled) * 100;
     };
 
     const computeOrderWidth = (qty: number, maxQty: number) => {
-        if (!Number.isFinite(qty) || qty <= 0) return 0;
-        if (maxQty <= 0) return 0;
-        let ratio = (qty / maxQty);
-        ratio *= 0.6
-        ratio = Math.max(0.01, ratio)
-        return ratio * 100;
+        if (!Number.isFinite(qty) || qty <= 0 || maxQty <= 0) return 0;
+        const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        const scaled = ratio * 0.6; // cap at 60% of row width
+        return Math.max(0.01, scaled) * 100;
     };
 
     const parseIncomingCandle = (payload: any): Candle | null => {
