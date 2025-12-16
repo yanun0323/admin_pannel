@@ -423,13 +423,17 @@ const TradingBotMonitor: Component = () => {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        // Active orders dashed lines (BUY=green, SELL=red) with labels
+        // Active orders dashed lines (BUY=green, SELL=red) with labels (deduped by side+price)
         if (activeOrders.length) {
             ctx.setLineDash([4 * dpr, 2 * dpr]); // denser dashes
             ctx.lineWidth = 1; // keep stroke at 1px
+            const seen = new Set<string>();
             for (const order of activeOrders) {
                 const priceNum = Number(order.price);
                 if (!Number.isFinite(priceNum) || priceNum <= 0) continue;
+                const key = `${order.side}:${priceNum.toFixed(8)}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
                 const y = yFor(priceNum);
                 const isBuy = order.side === 'BUY';
                 const color = isBuy ? 'rgba(59, 130, 246, 0.7)' : 'rgba(244, 114, 182, 0.7)';
