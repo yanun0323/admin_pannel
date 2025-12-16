@@ -25,6 +25,12 @@ import (
 	"control_page/internal/model"
 )
 
+const (
+	clientPongWait     = 60 * time.Second
+	clientPingInterval = 25 * time.Second
+	clientWriteWait    = 10 * time.Second
+)
+
 // TradingStreamManager manages WebSocket connections for trading data
 type TradingStreamManager struct {
 	apiKeyUseCase adaptor.APIKeyUseCase
@@ -146,10 +152,25 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Heartbeat: set read deadline + pong handler
+	conn.SetReadLimit(1 << 20) // 1MB safeguard
+	if err := conn.SetReadDeadline(time.Now().Add(clientPongWait)); err != nil {
+		log.Printf("websocket SetReadDeadline error: %v", err)
+		conn.Close()
+		return
+	}
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(clientPongWait))
+	})
+
+	stopHeartbeat := make(chan struct{})
+	go m.clientPingLoop(conn, stopHeartbeat)
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		conn.Close()
+		close(stopHeartbeat)
 		return
 	}
 	m.clients[conn] = &ClientState{
@@ -170,6 +191,7 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	defer func() {
 		log.Printf("remove client: %s", conn.RemoteAddr().String())
 		m.removeClient(conn)
+		close(stopHeartbeat)
 		conn.Close()
 	}()
 
@@ -181,6 +203,8 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			}
 			break
 		}
+		// Refresh read deadline on any received frame
+		_ = conn.SetReadDeadline(time.Now().Add(clientPongWait))
 
 		// Check if manager is closed
 		if m.isClosed() {
@@ -200,6 +224,26 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	}
 }
 
+func (m *TradingStreamManager) clientPingLoop(conn *websocket.Conn, stop <-chan struct{}) {
+	ticker := time.NewTicker(clientPingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			deadline := time.Now().Add(clientWriteWait)
+			if err := conn.SetWriteDeadline(deadline); err != nil {
+				return
+			}
+			if err := conn.WriteControl(websocket.PingMessage, []byte{}, deadline); err != nil {
+				return
+			}
+		case <-stop:
+			return
+		}
+	}
+}
+
 func (m *TradingStreamManager) handleMessage(conn *websocket.Conn, userID string, msg *model.TradingWebSocketMessage) {
 	log.Printf("handleMessage: action=%s, apiKeyID=%s, type=%s, symbol=%s", msg.Action, msg.APIKeyID, msg.Type, msg.Symbol)
 	switch msg.Action {
@@ -209,6 +253,11 @@ func (m *TradingStreamManager) handleMessage(conn *websocket.Conn, userID string
 		m.handleSubscribe(conn, userID, msg)
 	case "unsubscribe":
 		m.handleUnsubscribe(conn, msg)
+	case "ping":
+		m.sendToClient(conn, model.TradingWebSocketResponse{
+			Type:      "pong",
+			Timestamp: time.Now().UnixMilli(),
+		})
 	default:
 		m.sendError(conn, "unknown action: "+msg.Action)
 	}

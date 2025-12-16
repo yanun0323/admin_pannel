@@ -118,7 +118,6 @@ Register a new user account.
 ```json
 {
   "username": "string",
-  "email": "string",
   "password": "string"
 }
 ```
@@ -213,7 +212,6 @@ Login with username and password.
   "user": {
     "id": 1,
     "username": "admin",
-    "email": "admin@example.com",
     "roles": [...],
     "permissions": [...]
   }
@@ -269,7 +267,6 @@ Get current user information.
 {
   "id": 1,
   "username": "admin",
-  "email": "admin@example.com",
   "is_active": true,
   "totp_enabled": true,
   "roles": [
@@ -563,7 +560,6 @@ List all users.
     {
       "id": 1,
       "username": "admin",
-      "email": "admin@example.com",
       "is_active": true,
       "roles": [...],
       "permissions": [...]

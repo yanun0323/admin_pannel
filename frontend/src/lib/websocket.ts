@@ -46,13 +46,11 @@ class KlineWebSocket {
   connect(): void {
     // If already connecting, don't start another connection
     if (this.isConnecting) {
-      console.log('Kline WebSocket: connection already in progress');
       return;
     }
 
     // If there's an existing connection, close it first
     if (this.ws) {
-      console.log('Kline WebSocket: closing existing connection before reconnecting');
       this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onmessage = null;
@@ -66,7 +64,6 @@ class KlineWebSocket {
     this.ws = new WebSocket(`${WS_BASE_URL}/kline`);
 
     this.ws.onopen = () => {
-      console.log('Kline WebSocket connected');
       this.isConnecting = false;
       this.connectHandlers.forEach(handler => handler());
 
@@ -92,7 +89,6 @@ class KlineWebSocket {
     };
 
     this.ws.onclose = () => {
-      console.log('Kline WebSocket disconnected');
       this.isConnecting = false;
       this.ws = null;
       this.disconnectHandlers.forEach(handler => handler());
@@ -235,7 +231,7 @@ export interface SpreadRecord {
 }
 
 export interface TradingMessage {
-  action: 'connect' | 'subscribe' | 'unsubscribe';
+  action: 'connect' | 'subscribe' | 'unsubscribe' | 'ping';
   type?: 'kline' | 'orderbook' | 'order';
   apiKeyId?: string;
   symbol?: string;
@@ -273,19 +269,18 @@ class TradingWebSocket {
   private pendingMessages: TradingMessage[] = [];
   private currentApiKeyId: string | null = null;
   private isConnecting: boolean = false;
+  private heartbeatTimer: number | null = null;
 
   connect(token: string): void {
     this.token = token;
 
     // If already connecting, don't start another connection
     if (this.isConnecting) {
-      console.log('Trading WebSocket: connection already in progress');
       return;
     }
 
     // If there's an existing connection, close it first
     if (this.ws) {
-      console.log('Trading WebSocket: closing existing connection, readyState:', this.ws.readyState);
       // Remove event handlers to prevent triggering reconnect
       this.ws.onclose = null;
       this.ws.onerror = null;
@@ -296,18 +291,16 @@ class TradingWebSocket {
     }
 
     const wsUrl = `${WS_BASE_URL}/trading?token=${token}`;
-    console.log('Trading WebSocket: connecting to', wsUrl);
     this.isConnecting = true;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('Trading WebSocket connected, readyState:', this.ws?.readyState);
       this.isConnecting = false;
       this.connectHandlers.forEach(handler => handler());
+      this.startHeartbeat();
 
       // Send pending messages
       if (this.pendingMessages.length > 0) {
-        console.log('Trading WebSocket: sending', this.pendingMessages.length, 'pending messages');
         const messages = [...this.pendingMessages];
         this.pendingMessages = [];
         messages.forEach(msg => this.send(msg));
@@ -315,7 +308,6 @@ class TradingWebSocket {
     };
 
     this.ws.onmessage = (event) => {
-      console.log('Trading WebSocket: received message:', event.data);
       try {
         const response: TradingResponse = JSON.parse(event.data);
 
@@ -330,10 +322,10 @@ class TradingWebSocket {
     };
 
     this.ws.onclose = () => {
-      console.log('Trading WebSocket disconnected');
       this.isConnecting = false;
       this.ws = null;
       this.currentApiKeyId = null;
+      this.stopHeartbeat();
       this.disconnectHandlers.forEach(handler => handler());
       this.scheduleReconnect();
     };
@@ -362,6 +354,7 @@ class TradingWebSocket {
       this.ws = null;
     }
 
+    this.stopHeartbeat();
     this.currentApiKeyId = null;
     this.pendingMessages = [];
   }
@@ -380,18 +373,28 @@ class TradingWebSocket {
 
   private send(message: TradingMessage): void {
     const msgStr = JSON.stringify(message);
-    console.log('Trading WebSocket: send() called, ws exists:', !!this.ws, ', readyState:', this.ws?.readyState);
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('Trading WebSocket: sending message:', msgStr);
       try {
         this.ws.send(msgStr);
-        console.log('Trading WebSocket: message sent successfully');
       } catch (e) {
         console.error('Trading WebSocket: send error:', e);
       }
     } else {
-      console.log('Trading WebSocket: queuing message (ws not open, readyState=' + this.ws?.readyState + '):', msgStr);
       this.pendingMessages.push(message);
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      this.send({ action: 'ping' });
+    }, 20000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 

@@ -91,7 +91,6 @@ Content-Type: application/json
 
 {
   "username": "user1",
-  "email": "user1@example.com",
   "password": "password123"
 }
 ```
@@ -168,7 +167,6 @@ WS /ws/kline
 | id | INTEGER | Primary key |
 | username | TEXT | Unique username |
 | password | TEXT | Hashed password |
-| email | TEXT | Unique email |
 | is_active | INTEGER | Account status |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |

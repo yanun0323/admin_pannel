@@ -6,9 +6,9 @@ import APIKeys from './pages/APIKeys';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import RBAC from './pages/RBAC';
-import Register from './pages/Register';
 import TradingBot from './pages/TradingBot';
 import TradingBotMonitor from './pages/TradingBotMonitor';
+import UserAdmin from './pages/UserAdmin';
 import { authStore } from './stores/auth';
 
 const App: Component = () => {
@@ -27,7 +27,6 @@ const App: Component = () => {
     >
       <Router>
         <Route path="/login" component={Login} />
-        <Route path="/register" component={Register} />
         <Route
           path="/"
           component={() => (
@@ -41,6 +40,14 @@ const App: Component = () => {
           component={() => (
             <ProtectedRoute permission="manage:roles">
               <RBAC />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/users"
+          component={() => (
+            <ProtectedRoute permission="manage:users">
+              <UserAdmin />
             </ProtectedRoute>
           )}
         />

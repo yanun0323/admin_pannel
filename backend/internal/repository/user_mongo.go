@@ -22,7 +22,6 @@ type UserMongoDocument struct {
 	ID                primitive.ObjectID `bson:"_id,omitempty"`
 	Username          string             `bson:"username"`
 	Password          string             `bson:"password"`
-	Email             string             `bson:"email"`
 	IsActive          bool               `bson:"is_active"`
 	TOTPSecret        *string            `bson:"totp_secret,omitempty"`
 	TOTPEnabled       bool               `bson:"totp_enabled"`
@@ -46,7 +45,6 @@ func (r *UserMongoRepository) Create(ctx context.Context, user *model.User) erro
 	doc := UserMongoDocument{
 		Username:          user.Username,
 		Password:          user.Password,
-		Email:             user.Email,
 		IsActive:          user.IsActive,
 		TOTPSecret:        user.TOTPSecret,
 		TOTPEnabled:       user.TOTPEnabled,
@@ -99,19 +97,6 @@ func (r *UserMongoRepository) GetByUsername(ctx context.Context, username string
 	return documentToUser(&doc), nil
 }
 
-func (r *UserMongoRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
-	var doc UserMongoDocument
-	err := r.collection.FindOne(ctx, bson.M{"email": email}).Decode(&doc)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return documentToUser(&doc), nil
-}
-
 func (r *UserMongoRepository) Update(ctx context.Context, user *model.User) error {
 	objectID, err := primitive.ObjectIDFromHex(user.ID)
 	if err != nil {
@@ -122,7 +107,6 @@ func (r *UserMongoRepository) Update(ctx context.Context, user *model.User) erro
 	update := bson.M{
 		"$set": bson.M{
 			"username":   user.Username,
-			"email":      user.Email,
 			"is_active":  user.IsActive,
 			"updated_at": user.UpdatedAt,
 		},
@@ -143,7 +127,7 @@ func (r *UserMongoRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *UserMongoRepository) List(ctx context.Context) ([]model.User, error) {
-	cursor, err := r.collection.Find(ctx, bson.M{"totp_enabled": true})
+	cursor, err := r.collection.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +180,7 @@ func (r *UserMongoRepository) UpdateUsername(ctx context.Context, id string, use
 	return err
 }
 
-func (r *UserMongoRepository) UpdateRegistration(ctx context.Context, id string, email, hashedPassword, totpSecret string) error {
+func (r *UserMongoRepository) UpdateRegistration(ctx context.Context, id string, hashedPassword, totpSecret string) error {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return errors.New("invalid user ID")
@@ -204,7 +188,6 @@ func (r *UserMongoRepository) UpdateRegistration(ctx context.Context, id string,
 
 	update := bson.M{
 		"$set": bson.M{
-			"email":       email,
 			"password":    hashedPassword,
 			"totp_secret": totpSecret,
 			"updated_at":  time.Now(),
@@ -334,7 +317,6 @@ func documentToUser(doc *UserMongoDocument) *model.User {
 		ID:                doc.ID.Hex(),
 		Username:          doc.Username,
 		Password:          doc.Password,
-		Email:             doc.Email,
 		IsActive:          doc.IsActive,
 		TOTPSecret:        doc.TOTPSecret,
 		TOTPEnabled:       doc.TOTPEnabled,

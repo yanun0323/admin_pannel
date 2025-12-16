@@ -88,13 +88,11 @@ const TradingBotMonitor: Component = () => {
             if (!canvasEl || !chartContainer) return;
             const width = Math.max(0, Math.floor(chartContainer.clientWidth));
             const height = Math.max(0, Math.floor(chartContainer.clientHeight));
-            console.info('chart applySize', { width, height });
             if (width <= 0 || height <= 0) return;
 
             const dpr = window.devicePixelRatio || 1;
             const nextW = Math.floor(width * dpr);
             const nextH = Math.floor(height * dpr);
-            console.info('chart applySize (dpr)', { dpr, nextW, nextH });
             if (canvasEl.width !== nextW) canvasEl.width = nextW;
             if (canvasEl.height !== nextH) canvasEl.height = nextH;
             drawChart('resize/applySize');
@@ -143,7 +141,7 @@ const TradingBotMonitor: Component = () => {
         };
     };
 
-    const drawChart = (reason?: string) => {
+    const drawChart = (_?: string) => {
         if (!canvasEl) return;
         const ctx = canvasEl.getContext('2d');
         if (!ctx) return;
@@ -153,7 +151,7 @@ const TradingBotMonitor: Component = () => {
         const height = canvasEl.height;
 
         // Theme aligned to monitor/index.html
-        const bg = '#05070a';
+        const bg = '#11151aff';
         const text = '#e2e8f0';
         const grid = 'rgba(148, 163, 184, 0.10)';
         const up = '#10b981';
@@ -167,7 +165,6 @@ const TradingBotMonitor: Component = () => {
 
         const data = candles();
         const activeOrders = orders();
-        console.info('drawChart', { reason, candles: data.length, width, height, dpr });
         if (!data.length) return;
 
         const paddingLeft = Math.floor(12 * dpr);
@@ -178,7 +175,6 @@ const TradingBotMonitor: Component = () => {
         const plotW = Math.max(0, width - paddingLeft - paddingRight);
         const plotH = Math.max(0, height - paddingTop - paddingBottom);
         if (plotW <= 0 || plotH <= 0) return;
-        console.info('drawChart plot', { reason, plotW, plotH, paddingLeft, paddingRight, paddingTop, paddingBottom });
 
         let minLow = Number.POSITIVE_INFINITY;
         let maxHigh = Number.NEGATIVE_INFINITY;
@@ -190,7 +186,6 @@ const TradingBotMonitor: Component = () => {
             minLow = minLow - 1;
             maxHigh = maxHigh + 1;
         }
-        console.info('drawChart range', { reason, minLow, maxHigh });
 
         const yFor = (price: number) => {
             const t = (price - minLow) / (maxHigh - minLow);
@@ -224,20 +219,6 @@ const TradingBotMonitor: Component = () => {
             const yClose = yFor(c.close);
             const yHigh = yFor(c.high);
             const yLow = yFor(c.low);
-            if (i === 0) {
-                console.info('drawChart sample', {
-                    reason,
-                    candle: c,
-                    xCenter,
-                    x0,
-                    x1,
-                    yOpen,
-                    yClose,
-                    yHigh,
-                    yLow,
-                });
-            }
-
             const isUp = c.close >= c.open;
             ctx.strokeStyle = isUp ? up : down;
             ctx.fillStyle = isUp ? up : down;
@@ -296,7 +277,7 @@ const TradingBotMonitor: Component = () => {
         const price = currentPrice();
         if (Number.isFinite(price) && price > 0) {
             const y = yFor(price);
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
             ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
             ctx.beginPath();
             ctx.moveTo(paddingLeft, y);
@@ -346,9 +327,6 @@ const TradingBotMonitor: Component = () => {
 
     // Clear chart when symbol or interval changes
     createEffect(() => {
-        const symbol = selectedSymbol();
-        const interval = selectedInterval();
-        console.info('symbol/interval effect', { symbol, interval });
         // Avoid tracking dependencies from clearChart() -> drawChart() (candles/currentPrice),
         // otherwise this effect re-runs on every candle update and keeps clearing the chart.
         untrack(() => clearChart());
@@ -366,7 +344,6 @@ const TradingBotMonitor: Component = () => {
         const symbol = selectedSymbol();
         const interval = selectedInterval();
 
-        console.info('ws effect', { keyId, symbol, interval });
         if (!keyId || !symbol || !interval) return;
 
         const token = api.getToken();
@@ -379,65 +356,39 @@ const TradingBotMonitor: Component = () => {
         // Connect to WebSocket
         tradingWs.connect(token);
 
-        // Set API Key for the connection
-        tradingWs.connectToApiKey(keyId);
+        const sendSubscriptions = () => {
+            tradingWs.connectToApiKey(keyId);
+            tradingWs.subscribeKline(symbol, interval);
+            tradingWs.subscribeOrder(symbol);
+        };
 
-        // Subscribe to K-line data
-        tradingWs.subscribeKline(symbol, interval);
-
-        // Subscribe to orders
-        tradingWs.subscribeOrder(symbol);
+        // Send initial subscriptions
+        sendSubscriptions();
 
         // Handle messages
         const handleMessage = (data: TradingResponse) => {
             if (data.type === 'kline' && data.data) {
                 ensureCanvas();
 
-                console.info('kline message', {
-                    type: data.type,
-                    platform: data.platform,
-                    symbol: data.symbol,
-                    timestamp: data.timestamp,
-                    dataType: typeof data.data,
-                    data: data.data,
-                });
-
                 const candle = parseIncomingCandle(data.data as any);
                 if (!candle) return;
 
-                console.info('kline candle:', candle)
 
                 candleByTime.set(candle.time, candle);
 
                 // Fast-path: append/update tail in-order; otherwise flush (handles out-of-order/backfill).
                 if (candle.time >= lastCandleTime) {
-                    console.info('set candle')
                     setCandles((prev) => {
-                        console.info('setCandles(prev)', {
-                            prevLen: prev.length,
-                            prevLastTime: prev.length ? prev[prev.length - 1]!.time : null,
-                            incomingTime: candle.time,
-                        });
                         if (prev.length === 0) return [candle];
                         const last = prev[prev.length - 1]!;
                         if (last.time === candle.time) {
                             const next = prev.slice(0, prev.length - 1);
                             next.push(candle);
-                            console.info('setCandles(next)', {
-                                nextLen: next.length,
-                                nextLastTime: next[next.length - 1]!.time,
-                                replaced: true,
-                            });
                             return next;
                         }
 
                         const next = prev.concat(candle);
                         if (next.length > 200) next.splice(0, next.length - 200);
-                        console.info('setCandles(next)', {
-                            nextLen: next.length,
-                            nextLastTime: next[next.length - 1]!.time,
-                            appended: true,
-                        });
                         return next;
                     });
                     lastCandleTime = candle.time;
@@ -489,11 +440,15 @@ const TradingBotMonitor: Component = () => {
         };
 
         const unsubscribeMessage = tradingWs.onMessage(handleMessage);
+        const unsubscribeConnect = tradingWs.onConnect(() => {
+            // Re-run subscriptions after auto-reconnect
+            sendSubscriptions();
+        });
 
         // Cleanup
         onCleanup(() => {
-            console.info('ws cleanup', { keyId, symbol, interval });
             unsubscribeMessage();
+            unsubscribeConnect();
             tradingWs.unsubscribeKline(symbol, interval);
             tradingWs.unsubscribeOrders(symbol);
             tradingWs.disconnect();

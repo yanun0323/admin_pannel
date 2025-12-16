@@ -15,7 +15,7 @@ interface LoginResponse {
   totp_setup?: TOTPSetup;
 }
 
-interface TOTPSetup {
+export interface TOTPSetup {
   secret: string;
   qr_code: string;
 }
@@ -33,10 +33,24 @@ interface TOTPSetupResponse {
   data: TOTPSetup;
 }
 
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  roles?: string[];
+  is_active?: boolean;
+}
+
+export interface UpdateUserRequest {
+  username?: string;
+  password?: string;
+  is_active?: boolean;
+  totp_enabled?: boolean;
+  roles?: string[];
+}
+
 export interface User {
   id: string;
   username: string;
-  email: string;
   is_active: boolean;
   totp_enabled: boolean;
   created_at: string;
@@ -188,10 +202,10 @@ class ApiClient {
   }
 
   // Auth endpoints
-  async register(username: string, email: string, password: string): Promise<RegisterResponse> {
+  async register(username: string, password: string): Promise<RegisterResponse> {
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, password }),
     });
   }
 
@@ -327,6 +341,33 @@ class ApiClient {
   async removeRole(userId: string, roleId: string): Promise<ApiResponse<void>> {
     return this.request(`/rbac/users/${userId}/roles/${roleId}`, {
       method: 'DELETE',
+    });
+  }
+
+  // User management endpoints (admin)
+  async createUser(req: CreateUserRequest): Promise<ApiResponse<User>> {
+    return this.request('/rbac/users', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async updateUser(id: string, req: UpdateUserRequest): Promise<ApiResponse<User>> {
+    return this.request(`/rbac/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async deleteUser(id: string): Promise<ApiResponse<void>> {
+    return this.request(`/rbac/users/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async resetUserTOTP(id: string): Promise<ApiResponse<TOTPSetup>> {
+    return this.request(`/rbac/users/${id}/totp/reset`, {
+      method: 'POST',
     });
   }
 

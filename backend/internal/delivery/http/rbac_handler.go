@@ -6,8 +6,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"control_page/internal/adaptor"
+	"control_page/internal/model"
 	"control_page/internal/model/enum"
 	"control_page/internal/usecase"
 )
@@ -201,6 +203,19 @@ type AssignRoleRequest struct {
 	RoleID string `json:"role_id"`
 }
 
+type CreateUserRequest struct {
+	Username string   `json:"username"`
+	Password string   `json:"password"`
+	IsActive bool     `json:"is_active"`
+	Roles    []string `json:"roles"`
+}
+
+type UpdateUserRequest struct {
+	Username string   `json:"username"`
+	IsActive bool     `json:"is_active"`
+	Roles    []string `json:"roles"`
+}
+
 func (h *RBACHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.userUseCase.ListUsers(r.Context())
 	if err != nil {
@@ -229,6 +244,118 @@ func (h *RBACHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, SuccessResponse{Data: user})
+}
+
+func (h *RBACHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	var req CreateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "username and password are required"})
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to hash password"})
+		return
+	}
+
+	user := &model.User{
+		Username: req.Username,
+		Password: string(hashed),
+		IsActive: req.IsActive,
+	}
+
+	created, err := h.userUseCase.CreateUser(r.Context(), user, req.Roles)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	WriteJSON(w, http.StatusCreated, SuccessResponse{Data: created})
+}
+
+func (h *RBACHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
+		return
+	}
+
+	var req UpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	user, err := h.userUseCase.GetUser(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, usecase.ErrUserNotFound) {
+			WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
+			return
+		}
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to get user"})
+		return
+	}
+
+	user.Username = req.Username
+	user.IsActive = req.IsActive
+
+	if err := h.userUseCase.UpdateUser(r.Context(), &user.User); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update user"})
+		return
+	}
+
+	// Sync roles
+	currentRoleIDs := make(map[string]struct{})
+	for _, role := range user.Roles {
+		currentRoleIDs[role.ID] = struct{}{}
+	}
+	targetRoleIDs := make(map[string]struct{})
+	for _, id := range req.Roles {
+		targetRoleIDs[id] = struct{}{}
+		if _, ok := currentRoleIDs[id]; !ok {
+			if err := h.userUseCase.AssignRole(r.Context(), user.ID, id); err != nil {
+				WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to assign role"})
+				return
+			}
+		}
+	}
+	for roleID := range currentRoleIDs {
+		if _, ok := targetRoleIDs[roleID]; !ok {
+			if err := h.userUseCase.RemoveRole(r.Context(), user.ID, roleID); err != nil {
+				WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to remove role"})
+				return
+			}
+		}
+	}
+
+	updated, err := h.userUseCase.GetUser(r.Context(), id)
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to fetch updated user"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, SuccessResponse{Data: updated})
+}
+
+func (h *RBACHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
+		return
+	}
+
+	if err := h.userUseCase.DeleteUser(r.Context(), id); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to delete user"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, SuccessResponse{Message: "user deleted successfully"})
 }
 
 func (h *RBACHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
@@ -276,4 +403,24 @@ func (h *RBACHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, SuccessResponse{Message: "role removed successfully"})
+}
+
+func (h *RBACHandler) ResetUserTOTP(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
+		return
+	}
+
+	setup, err := h.userUseCase.ResetUserTOTP(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, usecase.ErrUserNotFound) {
+			WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
+			return
+		}
+		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to reset 2FA"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, SuccessResponse{Data: setup})
 }

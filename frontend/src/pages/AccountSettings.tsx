@@ -33,11 +33,6 @@ const AccountSettings: Component = () => {
       return;
     }
 
-    if (newPassword().length < 6) {
-      setPwdError('New password must be at least 6 characters');
-      return;
-    }
-
     if (newPassword() !== confirmPassword()) {
       setPwdError('New passwords do not match');
       return;
@@ -212,7 +207,7 @@ const AccountSettings: Component = () => {
                     placeholder="Enter new password"
                     autocomplete="new-password"
                   />
-                  <span class="hint">Must be at least 6 characters</span>
+                  <span class="hint">No minimum length enforced</span>
                 </div>
 
                 <div class="form-field">

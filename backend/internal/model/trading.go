@@ -52,7 +52,6 @@ type TradingWebSocketMessage struct {
 	Interval  string                `json:"interval"`  // Kline interval (1m, 5m, etc.)
 }
 
-
 // TradingWebSocketResponse represents response messages from the trading WebSocket
 type TradingWebSocketResponse struct {
 	Type      string      `json:"type"`      // kline, orderbook, orders, spread, error, connected

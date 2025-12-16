@@ -204,19 +204,17 @@ const RBAC: Component = () => {
                 <thead>
                   <tr>
                     <th>Username</th>
-                    <th>Email</th>
                     <th>Status</th>
                     <th>Roles</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <Show when={!users.loading} fallback={<tr><td colspan="5" class="loading">Loading...</td></tr>}>
-                    <For each={users()} fallback={<tr><td colspan="5" class="empty">No users found</td></tr>}>
+                  <Show when={!users.loading} fallback={<tr><td colspan="4" class="loading">Loading...</td></tr>}>
+                    <For each={users()} fallback={<tr><td colspan="4" class="empty">No users found</td></tr>}>
                       {(user) => (
                         <tr>
                           <td class="name">{user.username}</td>
-                          <td class="desc">{user.email}</td>
                           <td>
                             <span class={`status ${user.is_active ? 'active' : ''}`}>
                               {user.is_active ? 'Active' : 'Inactive'}

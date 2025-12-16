@@ -58,7 +58,7 @@ func NewAuthUseCase(
 	}
 }
 
-func (uc *AuthUseCase) Register(ctx context.Context, username, email, password string) (*model.RegisterResult, error) {
+func (uc *AuthUseCase) Register(ctx context.Context, username, password string) (*model.RegisterResult, error) {
 	// Check if user exists by username
 	existingUser, err := uc.userRepo.GetByUsername(ctx, username)
 	if err != nil {
@@ -67,19 +67,6 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 
 	// If user exists and already activated (2FA enabled), reject registration
 	if existingUser != nil && existingUser.TOTPEnabled {
-		return nil, ErrUserAlreadyExists
-	}
-
-	// Check if email is used by another activated user
-	emailUser, err := uc.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		return nil, err
-	}
-	if emailUser != nil && emailUser.TOTPEnabled {
-		return nil, ErrUserAlreadyExists
-	}
-	// If email belongs to a different inactive user, that's also a conflict
-	if emailUser != nil && existingUser != nil && emailUser.ID != existingUser.ID {
 		return nil, ErrUserAlreadyExists
 	}
 
@@ -103,25 +90,14 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 
 	if existingUser != nil {
 		// User exists but not activated - update their credentials and TOTP secret
-		if err := uc.userRepo.UpdateRegistration(ctx, existingUser.ID, email, string(hashedPassword), totpSecret); err != nil {
+		if err := uc.userRepo.UpdateRegistration(ctx, existingUser.ID, string(hashedPassword), totpSecret); err != nil {
 			return nil, err
 		}
 		userID = existingUser.ID
-	} else if emailUser != nil {
-		// Email exists with inactive user - update their credentials and TOTP secret
-		if err := uc.userRepo.UpdateRegistration(ctx, emailUser.ID, email, string(hashedPassword), totpSecret); err != nil {
-			return nil, err
-		}
-		// Also update username since they're re-registering
-		if err := uc.userRepo.UpdateUsername(ctx, emailUser.ID, username); err != nil {
-			return nil, err
-		}
-		userID = emailUser.ID
 	} else {
 		// New user - create
 		user := &model.User{
 			Username:   username,
-			Email:      email,
 			Password:   string(hashedPassword),
 			IsActive:   false,
 			TOTPSecret: &totpSecret,

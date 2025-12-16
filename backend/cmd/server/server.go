@@ -22,7 +22,6 @@ import (
 	"control_page/pkg/connection"
 )
 
-
 func Run(cfg *config.Config) error {
 	// Initialize MongoDB
 	mongoClient, err := connection.NewMongo(cfg.MongoDB.URI, cfg.MongoDB.Database)
@@ -44,7 +43,6 @@ func Run(cfg *config.Config) error {
 	if err := createDefaultAdminMongo(userRepo, roleRepo, userRoleRepo); err != nil {
 		log.Printf("Warning: failed to create default admin: %v", err)
 	}
-
 
 	// Initialize use cases
 	authUseCase := usecase.NewAuthUseCase(
@@ -172,7 +170,6 @@ func createDefaultAdminMongo(
 	// Create admin user
 	adminUser := &model.User{
 		Username: "admin",
-		Email:    "admin@example.com",
 		Password: string(hashedPassword),
 		IsActive: true,
 	}
@@ -189,4 +186,3 @@ func createDefaultAdminMongo(
 	log.Printf("Default admin user created (username: admin, password: admin)")
 	return nil
 }
-

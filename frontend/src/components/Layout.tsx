@@ -1,5 +1,5 @@
 import { A, useLocation, useNavigate } from '@solidjs/router';
-import { FiActivity, FiHome, FiKey, FiLogOut, FiSettings, FiTrendingUp, FiUser } from 'solid-icons/fi';
+import { FiActivity, FiHome, FiKey, FiLogOut, FiSettings, FiTrendingUp, FiUser, FiUsers } from 'solid-icons/fi';
 import { type Component, type JSX, Show } from 'solid-js';
 import { authStore } from '../stores/auth';
 
@@ -49,6 +49,12 @@ const Layout: Component<LayoutProps> = (props) => {
           <Show when={authStore.hasPermission('manage:roles')}>
             <A href="/rbac" class={`nav-item ${isActive('/rbac') ? 'active' : ''}`} title="RBAC">
               <FiUser />
+            </A>
+          </Show>
+
+          <Show when={authStore.hasPermission('manage:users')}>
+            <A href="/users" class={`nav-item ${isActive('/users') ? 'active' : ''}`} title="Users">
+              <FiUsers />
             </A>
           </Show>
         </nav>

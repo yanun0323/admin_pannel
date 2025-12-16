@@ -10,7 +10,6 @@ type User struct {
 	ID                string    `json:"id"` // MongoDB ObjectID as string
 	Username          string    `json:"username"`
 	Password          string    `json:"-"`
-	Email             string    `json:"email"`
 	IsActive          bool      `json:"is_active"`
 	TOTPSecret        *string   `json:"-"`
 	TOTPEnabled       bool      `json:"totp_enabled"`

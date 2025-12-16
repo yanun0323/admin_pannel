@@ -19,7 +19,6 @@ func NewAuthHandler(authUseCase adaptor.AuthUseCase) *AuthHandler {
 
 type RegisterRequest struct {
 	Username string `json:"username"`
-	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
@@ -67,17 +66,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.Email == "" || req.Password == "" {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "username, email and password are required"})
+	if req.Username == "" || req.Password == "" {
+		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "username and password are required"})
 		return
 	}
 
-	if len(req.Password) < 6 {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "password must be at least 6 characters"})
-		return
-	}
-
-	result, err := h.authUseCase.Register(r.Context(), req.Username, req.Email, req.Password)
+	result, err := h.authUseCase.Register(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, usecase.ErrUserAlreadyExists) {
 			WriteJSON(w, http.StatusConflict, ErrorResponse{Error: "user already exists"})
@@ -217,11 +211,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	if req.CurrentPassword == "" || req.NewPassword == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "current_password and new_password are required"})
-		return
-	}
-
-	if len(req.NewPassword) < 6 {
-		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: "new password must be at least 6 characters"})
 		return
 	}
 

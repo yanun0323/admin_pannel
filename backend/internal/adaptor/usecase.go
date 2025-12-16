@@ -9,7 +9,7 @@ import (
 
 // AuthUseCase defines the interface for authentication operations
 type AuthUseCase interface {
-	Register(ctx context.Context, username, email, password string) (*model.RegisterResult, error)
+	Register(ctx context.Context, username, password string) (*model.RegisterResult, error)
 	ActivateAccount(ctx context.Context, userID string, code string) error
 	Login(ctx context.Context, username, password string) (*model.LoginResult, error)
 	VerifyTOTP(ctx context.Context, userID string, code string) (string, *model.UserWithRoles, error)
@@ -25,10 +25,12 @@ type AuthUseCase interface {
 type UserUseCase interface {
 	GetUser(ctx context.Context, id string) (*model.UserWithRoles, error)
 	ListUsers(ctx context.Context) ([]model.UserWithRoles, error)
+	CreateUser(ctx context.Context, user *model.User, roleIDs []string) (*model.UserWithRoles, error)
 	UpdateUser(ctx context.Context, user *model.User) error
 	DeleteUser(ctx context.Context, id string) error
 	AssignRole(ctx context.Context, userID, roleID string) error
 	RemoveRole(ctx context.Context, userID, roleID string) error
+	ResetUserTOTP(ctx context.Context, userID string) (*model.TOTPSetup, error)
 }
 
 // RoleUseCase defines the interface for role management operations

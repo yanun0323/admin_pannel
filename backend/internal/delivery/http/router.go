@@ -72,25 +72,36 @@ func (rt *Router) Setup() *chi.Mux {
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
-		// Public routes
+		// Auth routes (public + protected)
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", rt.authHandler.Register)
-			r.Post("/activate", rt.authHandler.ActivateAccount)
+			// Public
 			r.Post("/login", rt.authHandler.Login)
 			r.Post("/verify-totp", rt.authHandler.VerifyTOTP)
+
+			// Protected
+			r.Group(func(r chi.Router) {
+				r.Use(rt.authMiddleware.Authenticate)
+
+				r.Get("/me", rt.authHandler.Me)
+				r.Post("/change-password", rt.authHandler.ChangePassword)
+
+				// Registration flows (only admins with manage:users)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageUsers))
+					r.Post("/register", rt.authHandler.Register)
+					r.Post("/activate", rt.authHandler.ActivateAccount)
+				})
+
+				// 2FA rebind routes
+				r.Post("/totp/rebind", rt.authHandler.SetupTOTPRebind)
+				r.Post("/totp/rebind/confirm", rt.authHandler.ConfirmTOTPRebind)
+				r.Post("/totp/rebind/cancel", rt.authHandler.CancelTOTPRebind)
+			})
 		})
 
-		// Protected routes
+		// Protected routes (requires authentication)
 		r.Group(func(r chi.Router) {
 			r.Use(rt.authMiddleware.Authenticate)
-
-			r.Get("/auth/me", rt.authHandler.Me)
-			r.Post("/auth/change-password", rt.authHandler.ChangePassword)
-
-			// 2FA rebind routes
-			r.Post("/auth/totp/rebind", rt.authHandler.SetupTOTPRebind)
-			r.Post("/auth/totp/rebind/confirm", rt.authHandler.ConfirmTOTPRebind)
-			r.Post("/auth/totp/rebind/cancel", rt.authHandler.CancelTOTPRebind)
 
 			// Kline routes (require view:kline permission)
 			r.Route("/kline", func(r chi.Router) {
@@ -105,26 +116,32 @@ func (rt *Router) Setup() *chi.Mux {
 				r.Get("/markets", rt.btccProxyHandler.GetMarketList)
 			})
 
-			// RBAC routes (require manage:roles permission)
+			// RBAC routes
 			r.Route("/rbac", func(r chi.Router) {
-				r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageRoles))
+				// Roles (require manage:roles)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageRoles))
+					r.Get("/roles", rt.rbacHandler.ListRoles)
+					r.Post("/roles", rt.rbacHandler.CreateRole)
+					r.Get("/roles/{id}", rt.rbacHandler.GetRole)
+					r.Put("/roles/{id}", rt.rbacHandler.UpdateRole)
+					r.Delete("/roles/{id}", rt.rbacHandler.DeleteRole)
+					r.Put("/roles/{id}/permissions", rt.rbacHandler.SetRolePermissions)
+					r.Get("/permissions", rt.rbacHandler.GetAllPermissions)
+				})
 
-				// Roles
-				r.Get("/roles", rt.rbacHandler.ListRoles)
-				r.Post("/roles", rt.rbacHandler.CreateRole)
-				r.Get("/roles/{id}", rt.rbacHandler.GetRole)
-				r.Put("/roles/{id}", rt.rbacHandler.UpdateRole)
-				r.Delete("/roles/{id}", rt.rbacHandler.DeleteRole)
-				r.Put("/roles/{id}/permissions", rt.rbacHandler.SetRolePermissions)
-
-				// Permissions
-				r.Get("/permissions", rt.rbacHandler.GetAllPermissions)
-
-				// Users
-				r.Get("/users", rt.rbacHandler.ListUsers)
-				r.Get("/users/{id}", rt.rbacHandler.GetUser)
-				r.Post("/users/{id}/roles", rt.rbacHandler.AssignRole)
-				r.Delete("/users/{id}/roles/{roleId}", rt.rbacHandler.RemoveRole)
+				// Users (require manage:users)
+				r.Group(func(r chi.Router) {
+					r.Use(rt.authMiddleware.RequirePermission(enum.PermissionManageUsers))
+					r.Get("/users", rt.rbacHandler.ListUsers)
+					r.Post("/users", rt.rbacHandler.CreateUser)
+					r.Get("/users/{id}", rt.rbacHandler.GetUser)
+					r.Put("/users/{id}", rt.rbacHandler.UpdateUser)
+					r.Delete("/users/{id}", rt.rbacHandler.DeleteUser)
+					r.Post("/users/{id}/roles", rt.rbacHandler.AssignRole)
+					r.Delete("/users/{id}/roles/{roleId}", rt.rbacHandler.RemoveRole)
+					r.Post("/users/{id}/totp/reset", rt.rbacHandler.ResetUserTOTP)
+				})
 			})
 
 			// API Keys routes

@@ -6,10 +6,17 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
 	"control_page/internal/model"
+)
+
+const (
+	clientPingIntervalKline = 25 * time.Second
+	clientPongWaitKline     = 60 * time.Second
+	clientWriteWaitKline    = 10 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -57,10 +64,20 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Heartbeat for frontend clients
+	conn.SetReadLimit(1 << 20)
+	_ = conn.SetReadDeadline(time.Now().Add(clientPongWaitKline))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(clientPongWaitKline))
+	})
+	stopPing := make(chan struct{})
+	go clientPingLoopKline(conn, stopPing)
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		conn.Close()
+		close(stopPing)
 		return
 	}
 	m.clients[conn] = make(map[string]bool)
@@ -68,6 +85,7 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 
 	defer func() {
 		m.removeClient(conn)
+		close(stopPing)
 		conn.Close()
 	}()
 
@@ -79,6 +97,8 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			}
 			break
 		}
+		// Refresh read deadline on any inbound frame
+		_ = conn.SetReadDeadline(time.Now().Add(clientPongWaitKline))
 
 		// Check if manager is closed
 		if m.isClosed() {
@@ -96,6 +116,26 @@ func (m *BinanceStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			m.handleSubscribe(conn, msg.Data)
 		case "unsubscribe":
 			m.handleUnsubscribe(conn, msg.Data)
+		}
+	}
+}
+
+func clientPingLoopKline(conn *websocket.Conn, stop <-chan struct{}) {
+	ticker := time.NewTicker(clientPingIntervalKline)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			deadline := time.Now().Add(clientWriteWaitKline)
+			if err := conn.SetWriteDeadline(deadline); err != nil {
+				return
+			}
+			if err := conn.WriteControl(websocket.PingMessage, []byte{}, deadline); err != nil {
+				return
+			}
+		case <-stop:
+			return
 		}
 	}
 }

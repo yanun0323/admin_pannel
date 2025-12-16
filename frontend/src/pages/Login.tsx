@@ -1,5 +1,5 @@
-import { A, useNavigate } from '@solidjs/router';
-import { type Component, createSignal, Show, For } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
+import { type Component, createSignal, For, Show } from 'solid-js';
 import { authStore } from '../stores/auth';
 
 const Login: Component = () => {
@@ -31,7 +31,7 @@ const Login: Component = () => {
   const handleTotpInput = (index: number, value: string) => {
     // Only allow digits
     const digit = value.replace(/\D/g, '').slice(-1);
-    
+
     const newCode = [...totpCode()];
     newCode[index] = digit;
     setTotpCode(newCode);
@@ -57,14 +57,14 @@ const Login: Component = () => {
     e.preventDefault();
     const pastedData = e.clipboardData?.getData('text') || '';
     const digits = pastedData.replace(/\D/g, '').slice(0, 6).split('');
-    
+
     if (digits.length > 0) {
       const newCode = [...totpCode()];
       digits.forEach((digit, i) => {
         if (i < 6) newCode[i] = digit;
       });
       setTotpCode(newCode);
-      
+
       // Focus the next empty input or the last one
       const nextEmptyIndex = newCode.findIndex(d => d === '');
       const focusIndex = nextEmptyIndex === -1 ? 5 : nextEmptyIndex;
@@ -83,7 +83,7 @@ const Login: Component = () => {
 
     setIsSubmitting(true);
     const success = await authStore.verifyTOTP(code);
-    
+
     if (success) {
       navigate('/');
     } else {
@@ -91,7 +91,7 @@ const Login: Component = () => {
       setTotpCode(['', '', '', '', '', '']);
       totpInputRefs[0]?.focus();
     }
-    
+
     setIsSubmitting(false);
   };
 
@@ -104,7 +104,7 @@ const Login: Component = () => {
   // 2FA Setup handlers
   const handleSetupInput = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1);
-    
+
     const newCode = [...setupCode()];
     newCode[index] = digit;
     setSetupCode(newCode);
@@ -128,14 +128,14 @@ const Login: Component = () => {
     e.preventDefault();
     const pastedData = e.clipboardData?.getData('text') || '';
     const digits = pastedData.replace(/\D/g, '').slice(0, 6).split('');
-    
+
     if (digits.length > 0) {
       const newCode = [...setupCode()];
       digits.forEach((digit, i) => {
         if (i < 6) newCode[i] = digit;
       });
       setSetupCode(newCode);
-      
+
       const nextEmptyIndex = newCode.findIndex(d => d === '');
       const focusIndex = nextEmptyIndex === -1 ? 5 : nextEmptyIndex;
       setupInputRefs[focusIndex]?.focus();
@@ -152,7 +152,7 @@ const Login: Component = () => {
 
     setIsSubmitting(true);
     const success = await authStore.activateTOTP(code);
-    
+
     if (success) {
       // Now pendingTOTP is set, show TOTP verification screen
       setSetupCode(['', '', '', '', '', '']);
@@ -160,7 +160,7 @@ const Login: Component = () => {
       setSetupCode(['', '', '', '', '', '']);
       setupInputRefs[0]?.focus();
     }
-    
+
     setIsSubmitting(false);
   };
 
@@ -241,110 +241,106 @@ const Login: Component = () => {
             </>
           }
         >
-        <Show
-          when={!authStore.pendingTOTP()}
-          fallback={
-            <>
-              <div class="auth-header">
-                <div class="auth-logo">Nova</div>
-                <h1>Two-Factor Authentication</h1>
-                <p>Enter the 6-digit code from your authenticator app</p>
-              </div>
-
-              <div class="totp-form">
-                <Show when={authStore.error()}>
-                  <div class="alert error">{authStore.error()}</div>
-                </Show>
-
-                <div class="totp-inputs">
-                  <For each={[0, 1, 2, 3, 4, 5]}>
-                    {(index) => (
-                      <input
-                        ref={(el) => (totpInputRefs[index] = el)}
-                        type="text"
-                        inputmode="numeric"
-                        maxLength={1}
-                        value={totpCode()[index]}
-                        onInput={(e) => handleTotpInput(index, e.currentTarget.value)}
-                        onKeyDown={(e) => handleTotpKeyDown(index, e)}
-                        onPaste={handleTotpPaste}
-                        disabled={isSubmitting()}
-                        class="totp-input"
-                        autocomplete="one-time-code"
-                      />
-                    )}
-                  </For>
+          <Show
+            when={!authStore.pendingTOTP()}
+            fallback={
+              <>
+                <div class="auth-header">
+                  <div class="auth-logo">Nova</div>
+                  <h1>Two-Factor Authentication</h1>
+                  <p>Enter the 6-digit code from your authenticator app</p>
                 </div>
 
-                <button
-                  type="button"
-                  class="btn-primary"
-                  onClick={handleTotpSubmit}
-                  disabled={isSubmitting() || totpCode().join('').length !== 6}
-                >
-                  {isSubmitting() ? 'Verifying...' : 'Verify'}
-                </button>
+                <div class="totp-form">
+                  <Show when={authStore.error()}>
+                    <div class="alert error">{authStore.error()}</div>
+                  </Show>
 
-                <button
-                  type="button"
-                  class="btn-secondary"
-                  onClick={handleCancelTOTP}
+                  <div class="totp-inputs">
+                    <For each={[0, 1, 2, 3, 4, 5]}>
+                      {(index) => (
+                        <input
+                          ref={(el) => (totpInputRefs[index] = el)}
+                          type="text"
+                          inputmode="numeric"
+                          maxLength={1}
+                          value={totpCode()[index]}
+                          onInput={(e) => handleTotpInput(index, e.currentTarget.value)}
+                          onKeyDown={(e) => handleTotpKeyDown(index, e)}
+                          onPaste={handleTotpPaste}
+                          disabled={isSubmitting()}
+                          class="totp-input"
+                          autocomplete="one-time-code"
+                        />
+                      )}
+                    </For>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="btn-primary"
+                    onClick={handleTotpSubmit}
+                    disabled={isSubmitting() || totpCode().join('').length !== 6}
+                  >
+                    {isSubmitting() ? 'Verifying...' : 'Verify'}
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    onClick={handleCancelTOTP}
+                    disabled={isSubmitting()}
+                  >
+                    Back to login
+                  </button>
+                </div>
+              </>
+            }
+          >
+            <div class="auth-header">
+              <div class="auth-logo">Nova</div>
+              <h1>Welcome back</h1>
+              <p>Sign in to your account</p>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <Show when={authStore.error()}>
+                <div class="alert error">{authStore.error()}</div>
+              </Show>
+
+              <div class="form-field">
+                <label for="username">Username</label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username()}
+                  onInput={(e) => setUsername(e.currentTarget.value)}
+                  placeholder="Enter username"
+                  required
                   disabled={isSubmitting()}
-                >
-                  Back to login
-                </button>
+                  autocomplete="username"
+                />
               </div>
-            </>
-          }
-        >
-          <div class="auth-header">
-            <div class="auth-logo">Nova</div>
-            <h1>Welcome back</h1>
-            <p>Sign in to your account</p>
-          </div>
 
-          <form onSubmit={handleSubmit}>
-            <Show when={authStore.error()}>
-              <div class="alert error">{authStore.error()}</div>
-            </Show>
+              <div class="form-field">
+                <label for="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password()}
+                  onInput={(e) => setPassword(e.currentTarget.value)}
+                  placeholder="Enter password"
+                  required
+                  disabled={isSubmitting()}
+                  autocomplete="current-password"
+                />
+              </div>
 
-            <div class="form-field">
-              <label for="username">Username</label>
-              <input
-                id="username"
-                type="text"
-                value={username()}
-                onInput={(e) => setUsername(e.currentTarget.value)}
-                placeholder="Enter username"
-                required
-                disabled={isSubmitting()}
-                autocomplete="username"
-              />
-            </div>
-
-            <div class="form-field">
-              <label for="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                value={password()}
-                onInput={(e) => setPassword(e.currentTarget.value)}
-                placeholder="Enter password"
-                required
-                disabled={isSubmitting()}
-                autocomplete="current-password"
-              />
-            </div>
-
-            <button type="submit" class="btn-primary" disabled={isSubmitting()}>
-              {isSubmitting() ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-
-          <p class="auth-footer">
-            Don't have an account? <A href="/register">Create one</A>
-          </p>
-        </Show>
+              <button type="submit" class="btn-primary" disabled={isSubmitting()}>
+                {isSubmitting() ? 'Signing in...' : 'Sign in'}
+              </button>
+            </form>
+          </Show>
         </Show>
       </div>
 

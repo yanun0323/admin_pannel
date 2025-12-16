@@ -12,13 +12,12 @@ type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByID(ctx context.Context, id string) (*model.User, error)
 	GetByUsername(ctx context.Context, username string) (*model.User, error)
-	GetByEmail(ctx context.Context, email string) (*model.User, error)
 	Update(ctx context.Context, user *model.User) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context) ([]model.User, error)
 	UpdatePassword(ctx context.Context, id string, hashedPassword string) error
 	UpdateUsername(ctx context.Context, id string, username string) error
-	UpdateRegistration(ctx context.Context, id string, email, hashedPassword, totpSecret string) error
+	UpdateRegistration(ctx context.Context, id string, hashedPassword, totpSecret string) error
 	SetTOTPSecret(ctx context.Context, id string, secret string) error
 	EnableTOTP(ctx context.Context, id string) error
 	Activate(ctx context.Context, id string) error
