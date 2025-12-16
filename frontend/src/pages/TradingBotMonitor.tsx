@@ -243,14 +243,16 @@ const TradingBotMonitor: Component = () => {
         if (!Number.isFinite(qty) || qty <= 0) return 0;
         const maxQty = side === 'ask' ? maxAskQty() : maxBidQty();
         if (maxQty <= 0) return 0;
-        const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        // const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        const ratio = qty / maxQty
         const scaled = ratio * 0.6; // cap at 60% of row width
         return Math.max(0.01, scaled) * 100;
     };
 
     const computeOrderWidth = (qty: number, maxQty: number) => {
         if (!Number.isFinite(qty) || qty <= 0 || maxQty <= 0) return 0;
-        const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        // const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
+        const ratio = qty / maxQty
         const scaled = ratio * 0.6; // cap at 60% of row width
         return Math.max(0.01, scaled) * 100;
     };
@@ -1220,17 +1222,17 @@ const TradingBotMonitor: Component = () => {
                 }
 
                 .ob-bar.ask {
-                    background: rgba(244, 114, 114, 0.35);
+                    background: rgba(244, 114, 114, 0.15);
                 }
 
                 .ob-bar.bid {
-                    background: rgba(59, 246, 162, 0.35);
+                    background: rgba(59, 246, 162, 0.15);
                 }
 
                 .ob-order-bar {
                     position: absolute;
-                    top: 0.5px;
-                    bottom: 0.5px;
+                    top: 0px;
+                    bottom: 0px;
                     right: 0;
                     z-index: 2;
                     opacity: 0.55;
