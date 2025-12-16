@@ -239,13 +239,21 @@ const TradingBotMonitor: Component = () => {
         return ts;
     };
 
-    const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
+const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
         if (!Number.isFinite(qty) || qty <= 0) return 0;
         const maxQty = side === 'ask' ? maxAskQty() : maxBidQty();
         if (maxQty <= 0) return 0;
         let ratio = (qty / maxQty) * 0.6; // cap at 50% width
         ratio = Math.min(0.6, ratio)
         ratio = Math.max(0.01, ratio)
+        return ratio * 100;
+    };
+
+    const computeOrderWidth = (qty: number, maxQty: number) => {
+        if (!Number.isFinite(qty) || qty <= 0 || maxQty <= 0) return 0;
+        let ratio = (qty / maxQty) * 0.5; // cap at 50%
+        ratio = Math.min(0.5, ratio);
+        ratio = Math.max(0.01, ratio);
         return ratio * 100;
     };
 
@@ -869,6 +877,16 @@ const TradingBotMonitor: Component = () => {
                                                         width: `${computeOBWidth(level.qtyNum, 'ask')}%`,
                                                     }}
                                                 />
+                                                <For each={orders().filter(o => o.side === 'SELL' && Number(o.price) === Number(level.price))}>
+                                                    {(order) => (
+                                                        <div
+                                                            class="ob-order-bar ask"
+                                                            style={{
+                                                                width: `${computeOrderWidth(Number(order.quantity), maxAskQty())}%`,
+                                                            }}
+                                                        />
+                                                    )}
+                                                </For>
                                                 <span class="price ask">{Number(level.price).toFixed(8)}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
@@ -890,6 +908,16 @@ const TradingBotMonitor: Component = () => {
                                                         width: `${computeOBWidth(level.qtyNum, 'bid')}%`,
                                                     }}
                                                 />
+                                                <For each={orders().filter(o => o.side === 'BUY' && Number(o.price) === Number(level.price))}>
+                                                    {(order) => (
+                                                        <div
+                                                            class="ob-order-bar bid"
+                                                            style={{
+                                                                width: `${computeOrderWidth(Number(order.quantity), maxBidQty())}%`,
+                                                            }}
+                                                        />
+                                                    )}
+                                                </For>
                                                 <span class="price bid">{Number(level.price).toFixed(8)}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
@@ -1157,7 +1185,7 @@ const TradingBotMonitor: Component = () => {
 
                 .price {
                     width: 50%;
-                    z-index: 2;
+                    z-index: 3;
                     position: absolute;
                     left: 0;
                     top: 50%;
@@ -1176,7 +1204,7 @@ const TradingBotMonitor: Component = () => {
                 .qty {
                     color: var(--text-secondary);
                     text-align: left;
-                    z-index: 2;
+                    z-index: 3;
                     position: absolute;
                     left: 50%;
                     width: 50%;
@@ -1194,11 +1222,28 @@ const TradingBotMonitor: Component = () => {
                 }
 
                 .ob-bar.ask {
-                    background: rgba(244, 114, 114, 0.35);
+                    background: rgba(244, 114, 182, 0.35);
                 }
 
                 .ob-bar.bid {
-                    background: rgba(65, 246, 59, 0.35);
+                    background: rgba(59, 130, 246, 0.35);
+                }
+
+                .ob-order-bar {
+                    position: absolute;
+                    top: 2px;
+                    bottom: 2px;
+                    right: 0;
+                    z-index: 2;
+                    opacity: 0.55;
+                }
+
+                .ob-order-bar.ask {
+                    background: rgba(244, 114, 182, 0.55);
+                }
+
+                .ob-order-bar.bid {
+                    background: rgba(59, 130, 246, 0.55);
                 }
                 .empty-orders {
                     display: flex;
