@@ -80,6 +80,7 @@ type ExchangeConnection struct {
 	btccMsgID  int64 // atomic counter for BTCC message IDs
 	btccAuthed bool  // whether BTCC connection is authenticated
 	btccAuthID int64 // last auth request id (used to disambiguate auth vs subscribe ack)
+	depthCache map[string]*depthCache
 
 	mu     sync.RWMutex
 	done   chan struct{}
@@ -381,11 +382,12 @@ func (m *TradingStreamManager) handleSubscribe(conn *websocket.Conn, userID stri
 	}
 
 	subKey := m.subscriptionKey(msg.Type, msg.Symbol, msg.Interval)
+	wideKey := m.subscriptionKey(msg.Type, msg.Symbol, "")
 	m.mu.Lock()
 	if s, ok := m.clients[conn]; ok {
 		s.Subscriptions[subKey] = true
 		if msg.Type == "kline" {
-			s.Subscriptions[m.subscriptionKey(msg.Type, msg.Symbol, "")] = true
+			s.Subscriptions[wideKey] = true
 		}
 	}
 	m.mu.Unlock()
@@ -396,7 +398,7 @@ func (m *TradingStreamManager) handleSubscribe(conn *websocket.Conn, userID stri
 			m.mu.Lock()
 			if s, ok := m.clients[conn]; ok {
 				s.BlockedSubs[subKey] = true
-				s.BlockedSubs[m.subscriptionKey(msg.Type, msg.Symbol, "")] = true
+				s.BlockedSubs[wideKey] = true
 			}
 			m.mu.Unlock()
 
@@ -405,7 +407,7 @@ func (m *TradingStreamManager) handleSubscribe(conn *websocket.Conn, userID stri
 			m.mu.Lock()
 			if s, ok := m.clients[conn]; ok {
 				delete(s.BlockedSubs, subKey)
-				delete(s.BlockedSubs, m.subscriptionKey(msg.Type, msg.Symbol, ""))
+				delete(s.BlockedSubs, wideKey)
 			}
 			m.mu.Unlock()
 		}
@@ -752,10 +754,10 @@ func (m *TradingStreamManager) sendBTCCSubscription(ec *ExchangeConnection, stre
 			params = []interface{}{parts[1], limit, parts[3]}
 		} else if len(parts) >= 3 {
 			limit, _ := strconv.Atoi(parts[2])
-			params = []interface{}{parts[1], limit, "0.01"}
+			params = []interface{}{parts[1], limit, "0.00000001"}
 		} else if len(parts) >= 2 {
 			// Default: 20 levels, "0.01" merge
-			params = []interface{}{parts[1], 20, "0.01"}
+			params = []interface{}{parts[1], 20, "0.00000001"}
 		}
 	case "deals":
 		// deals.subscribe: [market]
@@ -1023,6 +1025,11 @@ func (m *TradingStreamManager) handlePublicMessage(ec *ExchangeConnection, messa
 				if s, ok := data["s"].(string); ok {
 					response.Symbol = s
 				}
+				if k, ok := data["k"].(map[string]interface{}); ok {
+					if iv, ok := k["i"].(string); ok {
+						response.Interval = iv
+					}
+				}
 			case "depthUpdate":
 				response.Type = "orderbook"
 				response.Data = m.parseOrderBookData(data)
@@ -1097,7 +1104,7 @@ func (m *TradingStreamManager) handleBTCCPushNotification(ec *ExchangeConnection
 		}
 
 		response.Type = "orderbook"
-		response.Data = m.parseBTCCDepth(depthData, isFullSnapshot)
+		response.Data = m.parseBTCCDepth(ec, response.Symbol, depthData, isFullSnapshot)
 
 	case "deals.update":
 		// Params: [market, [deals...]]
@@ -1329,56 +1336,116 @@ func (m *TradingStreamManager) sendBTCCKlineHistory(conn *websocket.Conn, ec *Ex
 	}
 }
 
-// parseBTCCDepth parses BTCC depth data into OrderBook format
-func (m *TradingStreamManager) parseBTCCDepth(data map[string]interface{}, isFullSnapshot bool) *model.OrderBook {
-	ob := &model.OrderBook{
-		Timestamp: time.Now().UnixMilli(),
+type depthCache struct {
+	bids map[string]string
+	asks map[string]string
+	ts   int64
+}
+
+// parseBTCCDepth parses BTCC depth data into OrderBook format with cache/upsert
+func (m *TradingStreamManager) parseBTCCDepth(ec *ExchangeConnection, market string, data map[string]interface{}, isFullSnapshot bool) *model.OrderBook {
+	if market == "" {
+		market = "unknown"
 	}
 
-	// Parse last price
-	if last, ok := data["last"].(string); ok {
-		// Store last price in a custom field if needed
-		_ = last
+	ec.mu.Lock()
+	if ec.depthCache == nil {
+		ec.depthCache = make(map[string]*depthCache)
+	}
+	cache, ok := ec.depthCache[market]
+	if !ok || cache == nil {
+		cache = &depthCache{
+			bids: make(map[string]string),
+			asks: make(map[string]string),
+		}
+		ec.depthCache[market] = cache
+	}
+	ec.mu.Unlock()
+
+	// helper to apply snapshot to cache
+	applySnapshot := func(levels []interface{}, dest map[string]string) {
+		for k := range dest {
+			delete(dest, k)
+		}
+		for _, raw := range levels {
+			if lv, ok := raw.([]interface{}); ok && len(lv) >= 2 {
+				price := fmt.Sprint(lv[0])
+				qty := fmt.Sprint(lv[1])
+				dest[price] = qty
+			}
+		}
 	}
 
-	// Parse timestamp
+	// helper to upsert delta
+	applyDelta := func(levels []interface{}, dest map[string]string) {
+		for _, raw := range levels {
+			if lv, ok := raw.([]interface{}); ok && len(lv) >= 2 {
+				price := fmt.Sprint(lv[0])
+				qty := fmt.Sprint(lv[1])
+				if qty == "0" || qty == "0.0" {
+					delete(dest, price)
+				} else {
+					dest[price] = qty
+				}
+			}
+		}
+	}
+
+	// Apply snapshot or delta to cache
+	if isFullSnapshot {
+		if bids, ok := data["bids"].([]interface{}); ok {
+			applySnapshot(bids, cache.bids)
+		}
+		if asks, ok := data["asks"].([]interface{}); ok {
+			applySnapshot(asks, cache.asks)
+		}
+	} else {
+		if bids, ok := data["bids"].([]interface{}); ok {
+			applyDelta(bids, cache.bids)
+		}
+		if asks, ok := data["asks"].([]interface{}); ok {
+			applyDelta(asks, cache.asks)
+		}
+	}
+
+	// Update timestamp
+	cache.ts = time.Now().UnixMilli()
 	if ts, ok := data["time"].(float64); ok {
-		ob.Timestamp = int64(ts)
+		cache.ts = int64(ts)
 	}
 
-	// Parse bids
-	if bids, ok := data["bids"].([]interface{}); ok {
-		ob.Bids = make([]model.OrderBookLevel, 0, len(bids))
-		for _, bid := range bids {
-			if level, ok := bid.([]interface{}); ok && len(level) >= 2 {
-				ob.Bids = append(ob.Bids, model.OrderBookLevel{
-					Price:    fmt.Sprint(level[0]),
-					Quantity: fmt.Sprint(level[1]),
-				})
+	// Build orderbook from cache
+	buildSide := func(dest map[string]string, reverse bool) []model.OrderBookLevel {
+		levels := make([]model.OrderBookLevel, 0, len(dest))
+		for p, q := range dest {
+			levels = append(levels, model.OrderBookLevel{
+				Price:    p,
+				Quantity: q,
+			})
+		}
+		sort.Slice(levels, func(i, j int) bool {
+			pi, _ := strconv.ParseFloat(levels[i].Price, 64)
+			pj, _ := strconv.ParseFloat(levels[j].Price, 64)
+			if reverse {
+				return pi > pj
 			}
-		}
-		if len(ob.Bids) > 0 {
-			ob.BestBid = &ob.Bids[0]
-		}
+			return pi < pj
+		})
+		return levels
 	}
 
-	// Parse asks
-	if asks, ok := data["asks"].([]interface{}); ok {
-		ob.Asks = make([]model.OrderBookLevel, 0, len(asks))
-		for _, ask := range asks {
-			if level, ok := ask.([]interface{}); ok && len(level) >= 2 {
-				ob.Asks = append(ob.Asks, model.OrderBookLevel{
-					Price:    fmt.Sprint(level[0]),
-					Quantity: fmt.Sprint(level[1]),
-				})
-			}
-		}
-		if len(ob.Asks) > 0 {
-			ob.BestAsk = &ob.Asks[0]
-		}
+	ob := &model.OrderBook{
+		Timestamp: cache.ts,
+		Bids:      buildSide(cache.bids, true),
+		Asks:      buildSide(cache.asks, false),
 	}
 
-	// Calculate spread
+	if len(ob.Bids) > 0 {
+		ob.BestBid = &ob.Bids[0]
+	}
+	if len(ob.Asks) > 0 {
+		ob.BestAsk = &ob.Asks[0]
+	}
 	if ob.BestBid != nil && ob.BestAsk != nil {
 		bidPrice, _ := strconv.ParseFloat(ob.BestBid.Price, 64)
 		askPrice, _ := strconv.ParseFloat(ob.BestAsk.Price, 64)
@@ -1891,6 +1958,9 @@ func (m *TradingStreamManager) broadcastToClients(ec *ExchangeConnection, respon
 	ec.mu.RUnlock()
 
 	subKey := m.subscriptionKey(response.Type, response.Symbol, "")
+	if response.Type == "kline" {
+		subKey = m.subscriptionKey(response.Type, response.Symbol, response.Interval)
+	}
 
 	for _, client := range clients {
 		m.mu.RLock()
@@ -1986,7 +2056,7 @@ func (m *TradingStreamManager) formatOrderBookStream(platform model.Platform, sy
 	case model.PlatformBTCC:
 		// BTCC depth format: depth.MARKET.LIMIT.MERGE
 		// Default: 20 levels, 0.01 merge precision
-		return fmt.Sprintf("depth.%s.20.0.01", symbol)
+		return fmt.Sprintf("depth.%s.20", symbol)
 	default:
 		return strings.ToLower(symbol) + "@depth@100ms"
 	}

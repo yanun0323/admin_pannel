@@ -1,7 +1,7 @@
 import { createEffect, createResource, createSignal, For, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
 import Layout from '../components/Layout';
 import { api } from '../lib/api';
-import { tradingWs, type Order, type TradingResponse } from '../lib/websocket';
+import { tradingWs, type Order, type OrderBook, type TradingResponse } from '../lib/websocket';
 
 type Candle = {
     time: number; // seconds
@@ -13,6 +13,7 @@ type Candle = {
 
 const TradingBotMonitor: Component = () => {
     const LS_SYMBOL_KEY = 'tradingBotMonitor:selectedSymbol';
+    const LS_INTERVAL_KEY = 'tradingBotMonitor:selectedInterval';
 
     let chartContainer!: HTMLDivElement;
     let canvasEl: HTMLCanvasElement | null = null;
@@ -25,6 +26,8 @@ const TradingBotMonitor: Component = () => {
     let pixelsPerBar = 10; // zoom level (px per candle)
     let isDragging = false;
     let dragLastX = 0;
+    let hoverX: number | null = null;
+    let hoverY: number | null = null;
 
     const [apiKeys] = createResource(async () => {
         const response = await api.listAPIKeys();
@@ -36,7 +39,9 @@ const TradingBotMonitor: Component = () => {
     const [selectedSymbol, setSelectedSymbol] = createSignal<string>('BTCUSDT');
     const [selectedInterval, setSelectedInterval] = createSignal<string>('1m');
     const [currentPrice, setCurrentPrice] = createSignal<number>(0);
+    const [lastPrice, setLastPrice] = createSignal<number>(0);
     const [orders, setOrders] = createSignal<Order[]>([]);
+    const [orderBook, setOrderBook] = createSignal<OrderBook | null>(null);
     const [connected, setConnected] = createSignal<boolean>(false);
     const [error, setError] = createSignal<string>('');
     const [hasCandles, setHasCandles] = createSignal<boolean>(false);
@@ -54,8 +59,12 @@ const TradingBotMonitor: Component = () => {
     onMount(() => {
         if (typeof window === 'undefined') return;
         const savedSymbol = localStorage.getItem(LS_SYMBOL_KEY);
+        const savedInterval = localStorage.getItem(LS_INTERVAL_KEY);
         if (savedSymbol) {
             setSelectedSymbol(savedSymbol);
+        }
+        if (savedInterval) {
+            setSelectedInterval(savedInterval);
         }
     });
 
@@ -67,6 +76,17 @@ const TradingBotMonitor: Component = () => {
             localStorage.setItem(LS_SYMBOL_KEY, symbol);
         } catch {
             // ignore storage errors (quota/denied)
+        }
+    });
+
+    // Persist interval whenever it changes
+    createEffect(() => {
+        const interval = selectedInterval();
+        if (typeof window === 'undefined') return;
+        try {
+            localStorage.setItem(LS_INTERVAL_KEY, interval);
+        } catch {
+            // ignore storage errors
         }
     });
 
@@ -123,8 +143,8 @@ const TradingBotMonitor: Component = () => {
             }
 
             // Vertical scroll -> zoom with cursor anchor (less sensitive)
-            const zoomStep = 0.02; // low sensitivity
-            const zoomFactor = e.deltaY > 0 ? (1 + zoomStep) : (1 - zoomStep);
+            const zoomStep = 0.03; // low sensitivity
+            const zoomFactor = e.deltaY > 0 ? (1 - zoomStep) : (1 + zoomStep);
             const nextPixelsPerBar = Math.min(40, Math.max(2, pixelsPerBar * zoomFactor));
             const nextBarsFit = Math.max(1, plotW / nextPixelsPerBar);
 
@@ -150,10 +170,21 @@ const TradingBotMonitor: Component = () => {
 
         const onMouseLeave = () => {
             isDragging = false;
+            hoverX = null;
+            hoverY = null;
+            drawChart('hover-leave');
         };
 
         const onMouseMove = (e: MouseEvent) => {
-            if (!isDragging) return;
+            const dpr = window.devicePixelRatio || 1;
+            hoverX = e.offsetX * dpr;
+            hoverY = e.offsetY * dpr;
+
+            if (!isDragging) {
+                drawChart('hover');
+                return;
+            }
+
             const dx = e.clientX - dragLastX;
             dragLastX = e.clientX;
             // Invert: dragging left moves to older data (panPx increases)
@@ -238,7 +269,7 @@ const TradingBotMonitor: Component = () => {
 
         // Theme aligned to monitor/index.html
         const bg = '#11151aff';
-        const text = '#e2e8f0';
+        // const text = '#e2e8f0';
         const grid = 'rgba(148, 163, 184, 0.10)';
         const up = '#10b981';
         const down = '#ef4444';
@@ -356,7 +387,23 @@ const TradingBotMonitor: Component = () => {
         ctx.fillText(formatPrice(maxHigh), paddingLeft + plotW + Math.floor(6 * dpr), yMax);
         ctx.fillText(formatPrice(minLow), paddingLeft + plotW + Math.floor(6 * dpr), yMin);
 
-        // Active orders dashed lines (BUY=blue, SELL=pink)
+        // X-axis time labels (4 ticks)
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const ticks = 4;
+        for (let i = 0; i <= ticks; i++) {
+            const frac = i / ticks;
+            const idx = Math.min(viewCount - 1, Math.max(0, Math.round((padLeftBars + frac * (viewCount - 1)))));
+            const candle = view[idx];
+            const x = paddingLeft + Math.floor(step * (padLeftBars + idx + 0.5));
+            const timeStr = new Date(candle.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            ctx.fillStyle = axis;
+            ctx.fillText(timeStr, x, paddingTop + plotH + 4 * dpr);
+        }
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        // Active orders dashed lines (BUY=green, SELL=red) with labels
         if (activeOrders.length) {
             ctx.setLineDash([4 * dpr, 2 * dpr]); // denser dashes
             ctx.lineWidth = 1; // keep stroke at 1px
@@ -365,7 +412,8 @@ const TradingBotMonitor: Component = () => {
                 if (!Number.isFinite(priceNum) || priceNum <= 0) continue;
                 const y = yFor(priceNum);
                 const isBuy = order.side === 'BUY';
-                ctx.strokeStyle = isBuy ? '#38bdf8' : '#ec4899';
+                const color = isBuy ? 'rgba(59, 130, 246, 0.7)' : 'rgba(244, 114, 182, 0.7)';
+                ctx.strokeStyle = color;
                 ctx.beginPath();
                 ctx.moveTo(paddingLeft, y);
                 ctx.lineTo(paddingLeft + plotW, y);
@@ -374,19 +422,147 @@ const TradingBotMonitor: Component = () => {
             ctx.setLineDash([]);
         }
 
-        // Current price line
-        const price = currentPrice();
-        if (Number.isFinite(price) && price > 0) {
-            const y = yFor(price);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-            ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
+        // Best Bid/Ask first level lines + tags
+        const drawTag = (y: number, label: string, value: number, labelColor: string) => {
+            ctx.setLineDash([4 * dpr, 2 * dpr]);
+            ctx.strokeStyle = labelColor;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(paddingLeft, y);
             ctx.lineTo(paddingLeft + plotW, y);
             ctx.stroke();
+            ctx.setLineDash([]);
 
-            ctx.fillStyle = text;
-            ctx.fillText(formatPrice(price), paddingLeft + plotW + Math.floor(6 * dpr), y);
+            const priceTxt = value.toFixed(8);
+            const labelTxt = label;
+            ctx.font = `${Math.floor(11 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif`;
+
+            const labelW = 30 * dpr;
+            const priceW = ctx.measureText(priceTxt).width + 12 * dpr;
+            const boxH = 18 * dpr;
+            const boxY = y - boxH / 2;
+            let boxX = paddingLeft + plotW - priceW;//+ Math.floor(6 * dpr);
+
+            // Label box
+            ctx.fillStyle = labelColor;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(boxX, boxY, labelW, boxH, 5);
+                ctx.fill();
+            } else {
+                ctx.fillRect(boxX, boxY, labelW, boxH);
+            }
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillText(labelTxt, boxX + 6 * dpr, y);
+
+            // Price box
+            boxX += labelW + 1 * dpr;
+            ctx.fillStyle = labelColor;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(boxX, boxY, priceW, boxH, 5);
+                ctx.fill();
+            } else {
+                ctx.fillRect(boxX, boxY, priceW, boxH);
+            }
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillText(priceTxt, boxX + 6 * dpr, y);
+        };
+
+        const price = currentPrice();
+        const book = orderBook();
+        if (book) {
+            let bestBid = Number.NEGATIVE_INFINITY;
+            let bestAsk = Number.POSITIVE_INFINITY;
+            for (const b of book.bids || []) {
+                const v = Number(b.price);
+                if (Number.isFinite(v) && v > bestBid) bestBid = v;
+            }
+            for (const a of book.asks || []) {
+                const v = Number(a.price);
+                if (Number.isFinite(v) && v < bestAsk) bestAsk = v;
+            }
+            const priceY = Number.isFinite(price) ? yFor(price) : null;
+            const tagGap = 22 * dpr; // gap to avoid overlapping labels
+            const halfBoxH = 9 * dpr; // from drawTag height 18*dpr
+
+            let askY = Number.isFinite(bestAsk) ? yFor(bestAsk) : null;
+            let bidY = (Number.isFinite(bestBid) && bestBid > Number.NEGATIVE_INFINITY) ? yFor(bestBid) : null;
+
+            if (askY !== null && priceY !== null && Math.abs(askY - priceY) < tagGap) {
+                askY = priceY - tagGap;
+            }
+            if (bidY !== null && priceY !== null && Math.abs(bidY - priceY) < tagGap) {
+                bidY = priceY + tagGap;
+            }
+
+            // keep order: ask above bid
+            if (askY !== null && bidY !== null && (askY - bidY) > -tagGap) {
+                askY = bidY - tagGap;
+            }
+
+            // clamp within plot
+            const minY = paddingTop + halfBoxH;
+            const maxY = paddingTop + plotH - halfBoxH;
+
+            if (askY !== null) {
+                askY = Math.min(Math.max(askY, minY), maxY);
+                drawTag(askY, 'Ask', bestAsk, 'rgba(236, 72, 153, 0.95)');
+            }
+            if (bidY !== null) {
+                bidY = Math.min(Math.max(bidY, minY), maxY);
+                drawTag(bidY, 'Bid', bestBid, 'rgba(37, 99, 235, 0.95)');
+            }
+        }
+
+        // Current price line with label, color by up/down
+        if (Number.isFinite(price) && price > 0) {
+            const y = yFor(price);
+            const priceColor = price >= lastPrice() ? '#22c55e' : '#ef4444';
+            ctx.strokeStyle = priceColor;
+            ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
+            ctx.beginPath();
+            ctx.setLineDash([6 * dpr, 4 * dpr]);
+            ctx.moveTo(paddingLeft, y);
+            ctx.lineTo(paddingLeft + plotW, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            const label = `${price.toFixed(8)}`;
+            const boxW = ctx.measureText(label).width + 12 * dpr;
+            const boxH = 20 * dpr;
+            const boxX = paddingLeft + plotW - boxW + 31 * dpr;
+            const boxY = y - boxH / 2;
+            ctx.fillStyle = priceColor;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(boxX, boxY, boxW, boxH, 5);
+                ctx.fill();
+            } else {
+                ctx.fillRect(boxX, boxY, boxW, boxH);
+            }
+            ctx.fillStyle = '#ecececff';
+            ctx.fillText(label, boxX + 4 * dpr, y);
+        }
+
+        // Hover crosshair and tooltips
+        if (hoverX !== null && hoverY !== null) {
+            const x = hoverX;
+            const y = hoverY;
+            const inPlot = x >= paddingLeft && x <= paddingLeft + plotW && y >= paddingTop && y <= paddingTop + plotH;
+            if (inPlot) {
+                ctx.save();
+                ctx.setLineDash([4 * dpr, 2 * dpr]);
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, paddingTop);
+                ctx.lineTo(x, paddingTop + plotH);
+                ctx.moveTo(paddingLeft, y);
+                ctx.lineTo(paddingLeft + plotW, y);
+                ctx.stroke();
+                ctx.restore();
+            }
         }
     };
 
@@ -453,6 +629,7 @@ const TradingBotMonitor: Component = () => {
         setError('');
         setConnected(false);
         setOrders([]);
+        untrack(() => clearChart()); // ensure fresh chart before resubscribe
 
         // Connect to WebSocket
         tradingWs.connect(token);
@@ -460,6 +637,7 @@ const TradingBotMonitor: Component = () => {
         const sendSubscriptions = () => {
             tradingWs.connectToApiKey(keyId);
             tradingWs.subscribeKline(symbol, interval);
+            tradingWs.subscribeOrderBook(symbol);
             tradingWs.subscribeOrder(symbol);
         };
 
@@ -498,39 +676,36 @@ const TradingBotMonitor: Component = () => {
                     scheduleFlush();
                 }
 
+                setLastPrice(currentPrice());
                 setCurrentPrice(candle.close);
                 setHasCandles(true);
                 setConnected(true);
+            } else if (data.type === 'orderbook' && data.data) {
+                const book = data.data as OrderBook;
+                setOrderBook({
+                    ...book,
+                    bids: (book.bids || []).slice(0, 50),
+                    asks: (book.asks || []).slice(0, 50),
+                });
+                setConnected(true);
             } else if (data.type === 'order' && data.data) {
-                // Single order update
-                const orderData = data.data;
-                // Update or add single order
+                const orderData = data.data as Order;
+                const isTerminal =
+                    orderData.status === 'FILLED' ||
+                    orderData.status === 'CANCELED' ||
+                    orderData.status === 'UNKNOWN';
                 setOrders(prev => {
-                    const order = orderData as Order;
-                    const isTerminalStatus =
-                        order.status === 'FILLED' ||
-                        order.status === 'CANCELED' ||
-                        order.status === 'UNKNOWN';
-
-                    let idx = -1;
-                    for (let i = 0; i < prev.length; i += 1) {
-                        if (prev[i]!.orderId === order.orderId) {
-                            idx = i;
-                            break;
-                        }
-                    }
-
-                    if (isTerminalStatus) {
-                        if (idx === -1) return prev;
-                        if (prev.length === 1) return [];
-                        const next = prev.slice();
-                        next.splice(idx, 1);
+                    const next = [...prev];
+                    const idx = next.findIndex(o => o.orderId === orderData.orderId);
+                    if (isTerminal) {
+                        if (idx !== -1) next.splice(idx, 1);
                         return next;
                     }
-
-                    if (idx === -1) return prev.concat(order);
-                    const next = prev.slice();
-                    next[idx] = order;
+                    if (idx === -1) {
+                        next.push(orderData);
+                    } else {
+                        next[idx] = orderData;
+                    }
                     return next;
                 });
                 setConnected(true);
@@ -551,6 +726,7 @@ const TradingBotMonitor: Component = () => {
             unsubscribeMessage();
             unsubscribeConnect();
             tradingWs.unsubscribeKline(symbol, interval);
+            tradingWs.unsubscribeOrderBook(symbol);
             tradingWs.unsubscribeOrders(symbol);
             tradingWs.disconnect();
         });
@@ -650,42 +826,46 @@ const TradingBotMonitor: Component = () => {
                         </div>
                     </div>
 
-                    {/* Orders List */}
+                    {/* Order Book */}
                     <div class="orders-section">
                         <div class="section-header">
-                            <h3>Active Orders</h3>
+                            <h3>Order Book</h3>
                             <div class="order-count">
-                                <span>{orders().length} orders</span>
+                                <span>{orders().filter(o => { o.side === 'SELL' }).length || 0} / {orders().filter(o => { o.side === 'BUY' }).length || 0}</span>
                             </div>
                         </div>
-                        <div class="orders-list">
-                            <Show when={orders().length > 0} fallback={
-                                <div class="empty-orders">
-                                    <Show when={connected()}>
-                                        No active orders
-                                    </Show>
-                                    <Show when={!connected()}>
-                                        Connect to view orders
-                                    </Show>
-                                </div>
-                            }>
-                                <For each={orders()}>
-                                    {(order) => (
-                                        <div class="order-item">
-                                            <div class="order-header">
-                                                <span class={`side-badge ${order.side === 'BUY' ? 'buy' : 'sell'}`}>
-                                                    {order.side}
-                                                </span>
-                                                <span class="order-price">{order.price}</span>
+                        <div class="orderbook-grid">
+                            <div class="orderbook-side asks">
+                                {/* <div class="orderbook-head">Asks (20)</div> */}
+                                <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
+                                    <For each={(orderBook()?.asks || [])
+                                        .sort((a, b) => Number(a.price) - Number(b.price))
+                                        .slice(-15)
+                                        .reverse()}>
+                                        {(level) => (
+                                            <div class="ob-row">
+                                                <span class="price ask">{Number(level.price).toFixed(8)}</span>
+                                                <span class="qty">{level.quantity}</span>
                                             </div>
-                                            <div class="order-details">
-                                                <span>Qty: {order.quantity}</span>
-                                                <span>Status: {order.status}</span>
+                                        )}
+                                    </For>
+                                </Show>
+                            </div>
+                            <div class="orderbook-side bids">
+                                <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
+                                    <For each={(orderBook()?.bids || [])
+                                        .sort((a, b) => Number(b.price) - Number(a.price))
+                                        .slice(0, 15)}>
+                                        {(level) => (
+                                            <div class="ob-row">
+                                                <span class="price bid">{Number(level.price).toFixed(8)}</span>
+                                                <span class="qty">{level.quantity}</span>
                                             </div>
-                                        </div>
-                                    )}
-                                </For>
-                            </Show>
+                                        )}
+                                    </For>
+                                </Show>
+                                {/* <div class="orderbook-head">Bids (20)</div> */}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -900,70 +1080,71 @@ const TradingBotMonitor: Component = () => {
                     font-weight: 500;
                 }
 
-                .orders-list {
-                    max-height: 500px;
-                    overflow-y: auto;
+                .orderbook-grid {
+                    display: grid;
+                    grid-template-rows: 1fr 1fr;
+                    height: 600px;
+                    border-top: 1px solid var(--border);
+                }
+
+                .orderbook-side {
+                    padding: 8px 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    overflow: hidden; /* avoid scroll, fit all */
+                }
+
+                .orderbook-side.asks {
+                    background: transparent;
+                    justify-content: flex-end; /* align asks to bottom */
+                }
+
+                .orderbook-side.bids {
+                    background: transparent;
+                }
+
+                .orderbook-head {
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: var(--text-secondary);
+                    margin-bottom: 2px;
+                }
+
+                .ob-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-family: monospace;
+                    font-size: 11px;
+                    line-height: 1.2;
+                    padding: 0;
+                }
+
+                .price {
+                    min-width: 90px;
+                }
+
+                .price.bid {
+                    color: var(--success);
+                }
+
+                .price.ask {
+                    color: var(--danger);
+                }
+
+                .qty {
+                    color: var(--text-secondary);
+                    text-align: right;
                 }
 
                 .empty-orders {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 40px 20px;
+                    padding: 24px 12px;
                     color: var(--text-muted);
-                    font-size: 14px;
-                }
-
-                .order-item {
-                    padding: 16px 20px;
-                    border-bottom: 1px solid var(--border);
-                    transition: background 0.15s;
-                }
-
-                .order-item:hover {
-                    background: var(--surface-hover);
-                }
-
-                .order-item:last-child {
-                    border-bottom: none;
-                }
-
-                .order-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 8px;
-                }
-
-                .side-badge {
-                    padding: 4px 10px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                }
-
-                .side-badge.buy {
-                    background: rgba(34, 197, 94, 0.15);
-                    color: var(--success);
-                }
-
-                .side-badge.sell {
-                    background: rgba(239, 68, 68, 0.15);
-                    color: var(--danger);
-                }
-
-                .order-price {
-                    font-weight: 600;
-                    font-family: monospace;
-                    font-size: 15px;
-                }
-
-                .order-details {
-                    display: flex;
-                    gap: 16px;
                     font-size: 13px;
-                    color: var(--text-secondary);
                 }
             `}</style>
         </Layout>
