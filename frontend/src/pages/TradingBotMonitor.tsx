@@ -21,6 +21,10 @@ const TradingBotMonitor: Component = () => {
     const candleByTime = new Map<number, Candle>();
     let flushScheduled = false;
     let lastCandleTime = 0;
+    let panPx = 0; // how many pixels we moved to older candles (0 = latest aligned)
+    let pixelsPerBar = 10; // zoom level (px per candle)
+    let isDragging = false;
+    let dragLastX = 0;
 
     const [apiKeys] = createResource(async () => {
         const response = await api.listAPIKeys();
@@ -84,6 +88,86 @@ const TradingBotMonitor: Component = () => {
         canvasEl = canvas;
         chartContainer.appendChild(canvas);
 
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const data = candles();
+            if (!data.length || !canvasEl || !chartContainer) return;
+
+            const dpr = window.devicePixelRatio || 1;
+
+            const paddingLeft = Math.floor(64 * dpr);
+            const paddingRight = Math.floor(64 * dpr);
+            const paddingTop = Math.floor(64 * dpr);
+            const paddingBottom = Math.floor(64 * dpr);
+
+            const plotW = Math.max(0, canvasEl.width - paddingLeft - paddingRight);
+            const plotH = Math.max(0, canvasEl.height - paddingTop - paddingBottom);
+            if (plotW <= 0 || plotH <= 0) return;
+
+            const absDeltaX = Math.abs(e.deltaX);
+            // const absDeltaY = Math.abs(e.deltaY);
+
+            const barsFit = Math.max(1, plotW / pixelsPerBar);
+            const offsetBars = panPx / pixelsPerBar;
+            const startIdx = data.length - barsFit - offsetBars;
+
+            // Anchor zoom at chart center (not cursor)
+            const centerRatio = 0.5;
+            const targetIndex = startIdx + centerRatio * barsFit;
+
+            if (absDeltaX > 0.1) { //absDeltaY) {
+                // Horizontal scroll -> pan (invert direction)
+                panPx = panPx - e.deltaX; //Math.max(0, panPx - e.deltaX);
+                drawChart('pan');
+                return;
+            }
+
+            // Vertical scroll -> zoom with cursor anchor (less sensitive)
+            const zoomStep = 0.02; // low sensitivity
+            const zoomFactor = e.deltaY > 0 ? (1 + zoomStep) : (1 - zoomStep);
+            const nextPixelsPerBar = Math.min(40, Math.max(2, pixelsPerBar * zoomFactor));
+            const nextBarsFit = Math.max(1, plotW / nextPixelsPerBar);
+
+            // Keep targetIndex at center after zoom
+            const desiredStartIdx = targetIndex - centerRatio * nextBarsFit;
+            const nextOffsetBars = data.length - nextBarsFit - desiredStartIdx;
+
+            pixelsPerBar = nextPixelsPerBar;
+            const maxPan = (data.length + nextBarsFit) * pixelsPerBar;
+            const minPan = -plotW; // allow a screen of blank space on the right
+            panPx = Math.min(maxPan, Math.max(minPan, nextOffsetBars * pixelsPerBar));
+            drawChart('zoom');
+        };
+
+        const onMouseDown = (e: MouseEvent) => {
+            isDragging = true;
+            dragLastX = e.clientX;
+        };
+
+        const onMouseUp = () => {
+            isDragging = false;
+        };
+
+        const onMouseLeave = () => {
+            isDragging = false;
+        };
+
+        const onMouseMove = (e: MouseEvent) => {
+            if (!isDragging) return;
+            const dx = e.clientX - dragLastX;
+            dragLastX = e.clientX;
+            // Invert: dragging left moves to older data (panPx increases)
+            // allow pan both directions with blank space, invert direction
+            panPx = panPx - dx;
+            drawChart('pan');
+        };
+
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+        canvas.addEventListener('mousedown', onMouseDown);
+        canvas.addEventListener('mouseup', onMouseUp);
+        canvas.addEventListener('mouseleave', onMouseLeave);
+        canvas.addEventListener('mousemove', onMouseMove);
+
         const applySize = () => {
             if (!canvasEl || !chartContainer) return;
             const width = Math.max(0, Math.floor(chartContainer.clientWidth));
@@ -107,6 +191,8 @@ const TradingBotMonitor: Component = () => {
         candleByTime.clear();
         flushScheduled = false;
         lastCandleTime = 0;
+        panPx = 0;
+        pixelsPerBar = 10;
         setCurrentPrice(0);
         setHasCandles(false);
         setCandles([]);
@@ -176,9 +262,24 @@ const TradingBotMonitor: Component = () => {
         const plotH = Math.max(0, height - paddingTop - paddingBottom);
         if (plotW <= 0 || plotH <= 0) return;
 
+        const total = data.length;
+        const barsFit = Math.max(1, Math.floor(plotW / pixelsPerBar));
+        const offsetBars = panPx / pixelsPerBar;
+        const startIdxFloat = total - barsFit - offsetBars;
+
+        const padLeftBars = Math.max(0, -Math.floor(startIdxFloat));
+        const startIdx = Math.max(0, Math.floor(startIdxFloat));
+        const endIdxRaw = startIdx + barsFit - padLeftBars;
+        const padRightBars = Math.max(0, Math.ceil(endIdxRaw - total));
+        const endIdx = Math.min(total, Math.floor(endIdxRaw));
+
+        const view = data.slice(startIdx, endIdx);
+        const viewCount = view.length;
+        if (!viewCount && padLeftBars === 0 && padRightBars === 0) return;
+
         let minLow = Number.POSITIVE_INFINITY;
         let maxHigh = Number.NEGATIVE_INFINITY;
-        for (const c of data) {
+        for (const c of view) {
             if (c.low < minLow) minLow = c.low;
             if (c.high > maxHigh) maxHigh = c.high;
         }
@@ -204,14 +305,14 @@ const TradingBotMonitor: Component = () => {
             ctx.stroke();
         }
 
-        const n = data.length;
-        const step = plotW / Math.max(1, n);
+        const step = Math.max(1, pixelsPerBar);
         const bodyW = Math.max(1, Math.floor(step * 0.65));
 
         // Candles
-        for (let i = 0; i < n; i++) {
-            const c = data[i]!;
-            const xCenter = paddingLeft + Math.floor(step * (i + 0.5));
+        // Draw left padding as empty space and shift view accordingly
+        for (let i = 0; i < viewCount; i++) {
+            const c = view[i]!;
+            const xCenter = paddingLeft + Math.floor(step * (padLeftBars + i + 0.5));
             const x0 = xCenter - Math.floor(bodyW / 2);
             const x1 = xCenter + Math.floor(bodyW / 2);
 

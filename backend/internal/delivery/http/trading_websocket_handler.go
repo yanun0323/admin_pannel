@@ -38,6 +38,7 @@ type TradingStreamManager struct {
 	apiKeyRepo    adaptor.APIKeyRepository
 
 	clients map[*websocket.Conn]*ClientState
+	writes  map[*websocket.Conn]*sync.Mutex
 	mu      sync.RWMutex
 
 	// Exchange connections per API Key
@@ -117,6 +118,7 @@ func NewTradingStreamManager(
 		authUseCase:   authUseCase,
 		apiKeyRepo:    apiKeyRepo,
 		clients:       make(map[*websocket.Conn]*ClientState),
+		writes:        make(map[*websocket.Conn]*sync.Mutex),
 		exchangeConns: make(map[string]*ExchangeConnection),
 	}
 }
@@ -178,6 +180,7 @@ func (m *TradingStreamManager) HandleWebSocket(w http.ResponseWriter, r *http.Re
 		Subscriptions: make(map[string]bool),
 		BlockedSubs:   make(map[string]bool),
 	}
+	m.writes[conn] = &sync.Mutex{}
 	m.mu.Unlock()
 
 	log.Printf("new trading client connected: %s, userID=%s", conn.RemoteAddr().String(), user.ID)
@@ -1239,7 +1242,7 @@ func (m *TradingStreamManager) sendBTCCKlineHistory(conn *websocket.Conn, ec *Ex
 	}
 
 	end := time.Now().Unix()
-	start := end - int64(intervalSeconds*100)
+	start := end - int64(intervalSeconds*500)
 	if start < 0 {
 		start = 0
 	}
@@ -1902,6 +1905,19 @@ func (m *TradingStreamManager) broadcastToClients(ec *ExchangeConnection, respon
 }
 
 func (m *TradingStreamManager) sendToClient(conn *websocket.Conn, response model.TradingWebSocketResponse) {
+	m.mu.RLock()
+	writeMu := m.writes[conn]
+	m.mu.RUnlock()
+	if writeMu == nil {
+		return
+	}
+
+	writeMu.Lock()
+	defer writeMu.Unlock()
+
+	// Set a reasonable write deadline to avoid hung connections
+	_ = conn.SetWriteDeadline(time.Now().Add(clientWriteWait))
+
 	if err := conn.WriteJSON(response); err != nil {
 		log.Printf("send to client error: %v", err)
 	}
@@ -1980,6 +1996,7 @@ func (m *TradingStreamManager) removeClient(conn *websocket.Conn) {
 	m.mu.Lock()
 	state := m.clients[conn]
 	delete(m.clients, conn)
+	delete(m.writes, conn)
 	m.mu.Unlock()
 
 	if state != nil && state.APIKeyID != "" {
