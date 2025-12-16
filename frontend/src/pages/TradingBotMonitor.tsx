@@ -42,6 +42,8 @@ const TradingBotMonitor: Component = () => {
     const [lastPrice, setLastPrice] = createSignal<number>(0);
     const [orders, setOrders] = createSignal<Order[]>([]);
     const [orderBook, setOrderBook] = createSignal<OrderBook | null>(null);
+    const [maxAskQty, setMaxAskQty] = createSignal<number>(1);
+    const [maxBidQty, setMaxBidQty] = createSignal<number>(1);
     const [connected, setConnected] = createSignal<boolean>(false);
     const [error, setError] = createSignal<string>('');
     const [hasCandles, setHasCandles] = createSignal<boolean>(false);
@@ -235,6 +237,16 @@ const TradingBotMonitor: Component = () => {
         if (!Number.isFinite(ts)) return 0;
         if (ts > 9_999_999_999) ts = Math.floor(ts / 1000);
         return ts;
+    };
+
+    const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
+        if (!Number.isFinite(qty) || qty <= 0) return 0;
+        const maxQty = side === 'ask' ? maxAskQty() : maxBidQty();
+        if (maxQty <= 0) return 0;
+        let ratio = (qty / maxQty) * 0.6; // cap at 50% width
+        ratio = Math.min(0.6, ratio)
+        ratio = Math.max(0.01, ratio)
+        return ratio * 100;
     };
 
     const parseIncomingCandle = (payload: any): Candle | null => {
@@ -682,6 +694,12 @@ const TradingBotMonitor: Component = () => {
                 setConnected(true);
             } else if (data.type === 'orderbook' && data.data) {
                 const book = data.data as OrderBook;
+                const asks = (book.asks || []).slice(0, 50);
+                const bids = (book.bids || []).slice(0, 50);
+                const maxAsk = asks.reduce((m, l) => Math.max(m, Number(l.quantity) || 0), 1);
+                const maxBid = bids.reduce((m, l) => Math.max(m, Number(l.quantity) || 0), 1);
+                setMaxAskQty(maxAsk || 1);
+                setMaxBidQty(maxBid || 1);
                 setOrderBook({
                     ...book,
                     bids: (book.bids || []).slice(0, 50),
@@ -839,11 +857,18 @@ const TradingBotMonitor: Component = () => {
                                 {/* <div class="orderbook-head">Asks (20)</div> */}
                                 <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
                                     <For each={(orderBook()?.asks || [])
+                                        .map(l => ({ ...l, qtyNum: Number(l.quantity) }))
                                         .sort((a, b) => Number(a.price) - Number(b.price))
                                         .slice(-15)
                                         .reverse()}>
-                                        {(level) => (
+                                        {(level, _) => (
                                             <div class="ob-row">
+                                                <div
+                                                    class="ob-bar ask"
+                                                    style={{
+                                                        width: `${computeOBWidth(level.qtyNum, 'ask')}%`,
+                                                    }}
+                                                />
                                                 <span class="price ask">{Number(level.price).toFixed(8)}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
@@ -854,10 +879,17 @@ const TradingBotMonitor: Component = () => {
                             <div class="orderbook-side bids">
                                 <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
                                     <For each={(orderBook()?.bids || [])
+                                        .map(l => ({ ...l, qtyNum: Number(l.quantity) }))
                                         .sort((a, b) => Number(b.price) - Number(a.price))
                                         .slice(0, 15)}>
                                         {(level) => (
                                             <div class="ob-row">
+                                                <div
+                                                    class="ob-bar bid"
+                                                    style={{
+                                                        width: `${computeOBWidth(level.qtyNum, 'bid')}%`,
+                                                    }}
+                                                />
                                                 <span class="price bid">{Number(level.price).toFixed(8)}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
@@ -1091,7 +1123,7 @@ const TradingBotMonitor: Component = () => {
                     padding: 8px 10px;
                     display: flex;
                     flex-direction: column;
-                    gap: 2px;
+                    gap: 0px;
                     overflow: hidden; /* avoid scroll, fit all */
                 }
 
@@ -1114,15 +1146,23 @@ const TradingBotMonitor: Component = () => {
 
                 .ob-row {
                     display: flex;
-                    justify-content: space-between;
+                    justify-content: flex-start;
                     font-family: monospace;
                     font-size: 11px;
-                    line-height: 1.2;
+                    line-height: 0;
                     padding: 0;
+                    position: relative;
+                    min-height: 15px;
                 }
 
                 .price {
-                    min-width: 90px;
+                    width: 50%;
+                    z-index: 2;
+                    position: absolute;
+                    left: 0;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    text-align: left;
                 }
 
                 .price.bid {
@@ -1135,9 +1175,31 @@ const TradingBotMonitor: Component = () => {
 
                 .qty {
                     color: var(--text-secondary);
-                    text-align: right;
+                    text-align: left;
+                    z-index: 2;
+                    position: absolute;
+                    left: 50%;
+                    width: 50%;
+                    top: 50%;
+                    transform: translateY(-50%);
                 }
 
+                .ob-bar {
+                    position: absolute;
+                    top: 0;
+                    bottom: 0;
+                    right: 0;
+                    z-index: 1;
+                    opacity: 0.35;
+                }
+
+                .ob-bar.ask {
+                    background: rgba(244, 114, 114, 0.35);
+                }
+
+                .ob-bar.bid {
+                    background: rgba(65, 246, 59, 0.35);
+                }
                 .empty-orders {
                     display: flex;
                     align-items: center;
