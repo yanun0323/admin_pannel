@@ -239,21 +239,22 @@ const TradingBotMonitor: Component = () => {
         return ts;
     };
 
-const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
+    const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
         if (!Number.isFinite(qty) || qty <= 0) return 0;
         const maxQty = side === 'ask' ? maxAskQty() : maxBidQty();
         if (maxQty <= 0) return 0;
-        let ratio = (qty / maxQty) * 0.6; // cap at 50% width
-        ratio = Math.min(0.6, ratio)
+        let ratio = (qty / maxQty);
+        ratio *= 0.6
         ratio = Math.max(0.01, ratio)
         return ratio * 100;
     };
 
     const computeOrderWidth = (qty: number, maxQty: number) => {
-        if (!Number.isFinite(qty) || qty <= 0 || maxQty <= 0) return 0;
-        let ratio = (qty / maxQty) * 0.5; // cap at 50%
-        ratio = Math.min(0.5, ratio);
-        ratio = Math.max(0.01, ratio);
+        if (!Number.isFinite(qty) || qty <= 0) return 0;
+        if (maxQty <= 0) return 0;
+        let ratio = (qty / maxQty);
+        ratio *= 0.6
+        ratio = Math.max(0.01, ratio)
         return ratio * 100;
     };
 
@@ -1222,28 +1223,28 @@ const computeOBWidth = (qty: number, side: 'ask' | 'bid') => {
                 }
 
                 .ob-bar.ask {
-                    background: rgba(244, 114, 182, 0.35);
+                    background: rgba(244, 114, 114, 0.35);
                 }
 
                 .ob-bar.bid {
-                    background: rgba(59, 130, 246, 0.35);
+                    background: rgba(59, 246, 162, 0.35);
                 }
 
                 .ob-order-bar {
                     position: absolute;
-                    top: 2px;
-                    bottom: 2px;
+                    top: 0.5px;
+                    bottom: 0.5px;
                     right: 0;
                     z-index: 2;
                     opacity: 0.55;
                 }
 
                 .ob-order-bar.ask {
-                    background: rgba(244, 114, 182, 0.55);
+                    background: rgba(244, 114, 114, 0.35);
                 }
 
                 .ob-order-bar.bid {
-                    background: rgba(59, 130, 246, 0.55);
+                    background: rgba(59, 246, 162, 0.35);
                 }
                 .empty-orders {
                     display: flex;
