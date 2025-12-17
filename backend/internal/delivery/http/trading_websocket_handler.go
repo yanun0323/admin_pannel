@@ -1249,7 +1249,7 @@ func (m *TradingStreamManager) sendBTCCKlineHistory(conn *websocket.Conn, ec *Ex
 	}
 
 	end := time.Now().Unix()
-	start := end - int64(intervalSeconds*500)
+	start := end - int64(intervalSeconds*200)
 	if start < 0 {
 		start = 0
 	}

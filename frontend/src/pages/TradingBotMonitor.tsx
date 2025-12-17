@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, For, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
 import Layout from '../components/Layout';
 import { api } from '../lib/api';
 import { tradingWs, type Order, type OrderBook, type TradingResponse } from '../lib/websocket';
@@ -22,10 +22,12 @@ const TradingBotMonitor: Component = () => {
     let spreadWrapperEl: HTMLDivElement | null = null;
 
     const candleByTime = new Map<number, Candle>();
+    const defaultPanPxShift = 6
+    const defaultPixelsPerBar = 20;
     let flushScheduled = false;
     let lastCandleTime = 0;
     let panPx = 0; // how many pixels we moved to older candles (0 = latest aligned)
-    let pixelsPerBar = 10; // zoom level (px per candle)
+    let pixelsPerBar = defaultPixelsPerBar; // zoom level (px per candle)
     let isDragging = false;
     let dragLastX = 0;
     let hoverX: number | null = null;
@@ -51,6 +53,53 @@ const TradingBotMonitor: Component = () => {
     const [error, setError] = createSignal<string>('');
     const [hasCandles, setHasCandles] = createSignal<boolean>(false);
     const [candles, setCandles] = createSignal<Candle[]>([]);
+
+    const maxFractionDigits = (nums: number[]): number => {
+        let maxDigits = 0;
+
+        const fractionDigits = (value: number): number => {
+            if (!Number.isFinite(value)) return 0;
+
+            const str = value.toString();
+            const expIdx = str.indexOf('e') !== -1 ? str.indexOf('e') : str.indexOf('E');
+
+            if (expIdx !== -1) {
+                const coefStr = str.slice(0, expIdx);
+                const exp = Number(str.slice(expIdx + 1));
+                const coef = coefStr.startsWith('-') ? coefStr.slice(1) : coefStr;
+                const dotIdx = coef.indexOf('.');
+                const digitsLen = dotIdx === -1 ? coef.length : coef.length - 1;
+                const originalFraction = dotIdx === -1 ? 0 : digitsLen - dotIdx;
+                const shifted = exp >= 0 ? Math.max(0, originalFraction - exp) : originalFraction - exp;
+                return shifted > 0 ? shifted : 0;
+            }
+
+            const dotIdx = str.indexOf('.');
+            if (dotIdx === -1) return 0;
+
+            let end = str.length;
+            while (end > dotIdx + 1 && str.charCodeAt(end - 1) === 48) {
+                end -= 1;
+            }
+
+            return end - dotIdx - 1;
+        };
+
+        for (let i = 0; i < nums.length; i += 1) {
+            const digits = fractionDigits(nums[i]!);
+            if (digits > maxDigits) {
+                maxDigits = digits;
+            }
+        }
+
+        return maxDigits;
+    }
+
+    const fractionDigits = createMemo(() => {
+        const ob = orderBook();
+        const orders = [...(ob?.asks ?? []), ...(ob?.bids ?? [])];
+        return maxFractionDigits(orders.map((l) => Number(l.price)));
+    });
 
     // Default to first active API key once loaded
     createEffect(() => {
@@ -228,7 +277,7 @@ const TradingBotMonitor: Component = () => {
         flushScheduled = false;
         lastCandleTime = 0;
         panPx = 0;
-        pixelsPerBar = 10;
+        pixelsPerBar = defaultPixelsPerBar;
         setCurrentPrice(0);
         setHasCandles(false);
         setCandles([]);
@@ -320,7 +369,7 @@ const TradingBotMonitor: Component = () => {
 
         const total = data.length;
         const barsFit = Math.max(1, Math.floor(plotW / pixelsPerBar));
-        const offsetBars = panPx / pixelsPerBar;
+        const offsetBars = panPx / pixelsPerBar - defaultPanPxShift * dpr;
         const startIdxFloat = total - barsFit - offsetBars;
 
         const padLeftBars = Math.max(0, -Math.floor(startIdxFloat));
@@ -352,7 +401,7 @@ const TradingBotMonitor: Component = () => {
         // Grid
         ctx.strokeStyle = grid;
         ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
-        const gridRows = 4;
+        const gridRows = 8;
         for (let i = 0; i <= gridRows; i++) {
             const y = paddingTop + Math.round((plotH * i) / gridRows);
             ctx.beginPath();
@@ -399,23 +448,15 @@ const TradingBotMonitor: Component = () => {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        const formatPrice = (v: number) => {
-            if (!Number.isFinite(v)) return '—';
-            const abs = Math.abs(v);
-            if (abs >= 1000) return v.toFixed(2);
-            if (abs >= 1) return v.toFixed(4);
-            return v.toFixed(6);
-        };
-
         const yMax = yFor(maxHigh);
         const yMin = yFor(minLow);
-        ctx.fillText(formatPrice(maxHigh), paddingLeft + plotW + Math.floor(6 * dpr), yMax);
-        ctx.fillText(formatPrice(minLow), paddingLeft + plotW + Math.floor(6 * dpr), yMin);
+        ctx.fillText(maxHigh.toFixed(fractionDigits()), paddingLeft + plotW + Math.floor(6 * dpr), yMax);
+        ctx.fillText(minLow.toFixed(fractionDigits()), paddingLeft + plotW + Math.floor(6 * dpr), yMin);
 
         // X-axis time labels (4 ticks)
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const ticks = 4;
+        const ticks = 8;
         for (let i = 0; i <= ticks; i++) {
             const frac = i / ticks;
             const idx = Math.min(viewCount - 1, Math.max(0, Math.round((padLeftBars + frac * (viewCount - 1)))));
@@ -430,13 +471,13 @@ const TradingBotMonitor: Component = () => {
 
         // Active orders dashed lines (BUY=green, SELL=red) with labels (deduped by side+price)
         if (activeOrders.length) {
-            ctx.setLineDash([4 * dpr, 2 * dpr]); // denser dashes
+            ctx.setLineDash([3 * dpr, 2 * dpr]); // denser dashes
             ctx.lineWidth = 1; // keep stroke at 1px
             const seen = new Set<string>();
             for (const order of activeOrders) {
                 const priceNum = Number(order.price);
                 if (!Number.isFinite(priceNum) || priceNum <= 0) continue;
-                const key = `${order.side}:${priceNum.toFixed(8)}`;
+                const key = `${order.side}:${priceNum.toFixed(fractionDigits())}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
                 const y = yFor(priceNum);
@@ -452,8 +493,7 @@ const TradingBotMonitor: Component = () => {
         }
 
         // Best Bid/Ask first level lines + tags
-        const drawTag = (y: number, label: string, value: number, labelColor: string) => {
-            const priceTxt = value.toFixed(8);
+        const drawTag = (y: number, label: string, priceTxt: string, labelColor: string) => {
             const labelTxt = label;
             ctx.font = `${Math.floor(11 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif`;
 
@@ -527,11 +567,11 @@ const TradingBotMonitor: Component = () => {
 
             if (askY !== null) {
                 askY = Math.min(Math.max(askY, minY), maxY);
-                drawTag(askY, 'Ask', bestAsk, 'rgba(236, 72, 153, 0.95)');
+                drawTag(askY, 'Ask', bestAsk.toFixed(fractionDigits()), 'rgba(236, 72, 153, 0.95)');
             }
             if (bidY !== null) {
                 bidY = Math.min(Math.max(bidY, minY), maxY);
-                drawTag(bidY, 'Bid', bestBid, 'rgba(37, 99, 235, 0.95)');
+                drawTag(bidY, 'Bid', bestBid.toFixed(fractionDigits()), 'rgba(37, 99, 235, 0.95)');
             }
         }
 
@@ -542,13 +582,13 @@ const TradingBotMonitor: Component = () => {
             ctx.strokeStyle = priceColor;
             ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
             ctx.beginPath();
-            ctx.setLineDash([6 * dpr, 4 * dpr]);
+            ctx.setLineDash([3 * dpr, 2 * dpr]);
             ctx.moveTo(paddingLeft, y);
             ctx.lineTo(paddingLeft + plotW, y);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            const label = `${price.toFixed(8)}`;
+            const label = `${price.toFixed(fractionDigits())}`;
             const boxW = ctx.measureText(label).width + 12 * dpr;
             const boxH = 20 * dpr;
             const boxX = paddingLeft + plotW - boxW + 31 * dpr;
@@ -643,37 +683,32 @@ const TradingBotMonitor: Component = () => {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         const yTicks = 4;
-        const formatSpread = (v: number) => {
-            const abs = Math.abs(v);
-            if (abs >= 1) return v.toFixed(4);
-            if (abs >= 0.001) return v.toFixed(6);
-            return v.toExponential(2);
-        };
-
 
         const gridRightPadding = 12 * dpr
-
+        let maxLabelBoxW = 0
         // Grid Line
         for (let i = 0; i <= yTicks; i++) {
             const frac = i / yTicks;
             const val = maxSpread - frac * span;
             const y = padding + frac * plotH;
+            const label = val.toFixed(fractionDigits());
+            const boxW = ctx.measureText(label).width + 8 * dpr;
+            maxLabelBoxW = Math.max(maxLabelBoxW, boxW)
             ctx.beginPath();
             ctx.moveTo(padding, y);
-            ctx.lineTo(padding + plotW - 6 * dpr, y - gridRightPadding);
+            ctx.lineTo(padding + plotW - boxW - gridRightPadding, y);
             ctx.stroke();
-            const label = formatSpread(val);
-            const boxW = ctx.measureText(label).width + 8 * dpr;
             ctx.fillStyle = 'rgba(248, 250, 252, 0.9)';
-            ctx.fillText(label, padding + plotW - boxW - gridRightPadding, y);
+            ctx.fillText(label, padding + plotW - boxW - gridRightPadding + 6 * dpr, y);
         }
 
+        // const lastX = padding + ((last.t - minT) / tSpan) * (plotW - gridRightPadding);
         // History Line
         ctx.strokeStyle = 'rgba(246, 212, 59, 0.8)';
         ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
         ctx.beginPath();
         data.forEach((pt, i) => {
-            const x = padding + ((pt.t - minT) / tSpan) * plotW;
+            const x = padding + ((pt.t - minT) / tSpan) * (plotW - maxLabelBoxW - gridRightPadding);
             const y = padding + (1 - (pt.s - minSpread) / span) * plotH;
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -682,21 +717,21 @@ const TradingBotMonitor: Component = () => {
 
         // Last value dashed line + tag
         const last = data[data.length - 1];
-        // const lastX = padding + ((last.t - minT) / tSpan) * plotW;
-        const lastY = padding + (1 - (last.s - minSpread) / span) * plotH;
+        // Current Spread Line
+        const lastY = padding + (1 - (last.s - minSpread) / span) * (plotH);
         ctx.setLineDash([3 * dpr, 3 * dpr]);
         ctx.strokeStyle = 'rgba(246, 212, 59, 0.7)';
         ctx.beginPath();
         ctx.moveTo(padding, lastY);
-        ctx.lineTo(padding + plotW, lastY);
+        ctx.lineTo(padding + plotW - maxLabelBoxW - gridRightPadding, lastY);
         ctx.stroke();
         ctx.setLineDash([]);
 
         // Current Label
-        const tag = `${last.s.toFixed(8)}`;
+        const tag = `${last.s.toFixed(fractionDigits())}`;
         const boxW = ctx.measureText(tag).width + 8 * dpr;
         const boxH = 16 * dpr;
-        const boxX = padding + plotW - boxW;
+        const boxX = padding + plotW - boxW - gridRightPadding;
         const boxY = lastY - boxH / 2;
         ctx.fillStyle = 'rgba(246, 212, 59, 0.9)';
         if (typeof ctx.roundRect === 'function') {
@@ -1006,7 +1041,7 @@ const TradingBotMonitor: Component = () => {
                             <div class="current-price">
                                 <span>Current Price:</span>
                                 <span class={`price-value ${currentPrice() > 0 ? 'active' : ''}`}>
-                                    ${currentPrice().toFixed(8)}
+                                    ${currentPrice().toFixed(fractionDigits())}
                                 </span>
                             </div>
                         </div>
@@ -1069,7 +1104,7 @@ const TradingBotMonitor: Component = () => {
                                                         />
                                                     )}
                                                 </For>
-                                                <span class="price ask">{Number(level.price).toFixed(8)}</span>
+                                                <span class="price ask">{Number(level.price).toFixed(fractionDigits())}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
                                         )}
@@ -1100,7 +1135,7 @@ const TradingBotMonitor: Component = () => {
                                                         />
                                                     )}
                                                 </For>
-                                                <span class="price bid">{Number(level.price).toFixed(8)}</span>
+                                                <span class="price bid">{Number(level.price).toFixed(fractionDigits())}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
                                         )}
