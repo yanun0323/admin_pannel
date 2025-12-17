@@ -215,7 +215,7 @@ export interface Order {
   price: string;
   quantity: string;
   executedQty: string;
-  status: string;
+  status: 'PLACED' | 'PARTIALLY_FILLED' | 'CANCELED' | 'FILLED' | 'UNKNOWN';
   timeInForce: string;
   createTime: number;
   updateTime: number;

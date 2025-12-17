@@ -302,6 +302,33 @@ const TradingBotMonitor: Component = () => {
         return Math.max(0.01, scaled) * 100;
     };
 
+    const aggregateOrdersByPrice = createMemo(() => {
+        const fd = fractionDigits();
+        const grouped: { BUY: Map<number, number>; SELL: Map<number, number> } = {
+            BUY: new Map<number, number>(),
+            SELL: new Map<number, number>(),
+        };
+
+        orders().forEach((order) => {
+            const price = Number(order.price);
+            const qty = Number(order.quantity);
+            if (!Number.isFinite(price) || !Number.isFinite(qty)) return;
+
+            const side = order.side === 'SELL' ? 'SELL' : 'BUY';
+            const key = Number(price.toFixed(fd));
+            const prev = grouped[side].get(key) || 0;
+            grouped[side].set(key, prev + qty);
+        });
+
+        return grouped;
+    });
+
+    const orderQtyAtPrice = (side: 'BUY' | 'SELL', price: number) => {
+        const key = Number(price.toFixed(fractionDigits()));
+        const grouped = aggregateOrdersByPrice();
+        return grouped[side].get(key) || 0;
+    };
+
     const computeOrderWidth = (qty: number, maxQty: number) => {
         if (!Number.isFinite(qty) || qty <= 0 || maxQty <= 0) return 0;
         // const ratio = Math.min(1, Math.log1p(qty) / Math.log1p(maxQty));
@@ -388,6 +415,26 @@ const TradingBotMonitor: Component = () => {
             if (c.low < minLow) minLow = c.low;
             if (c.high > maxHigh) maxHigh = c.high;
         }
+
+        const activeOrderPrices = activeOrders
+            .map((o) => Number(o.price))
+            .filter((p) => Number.isFinite(p) && p > 0);
+        if (activeOrderPrices.length > 0) {
+            const activeMin = Math.min(...activeOrderPrices);
+            const activeMax = Math.max(...activeOrderPrices);
+            const padding = (activeMax - activeMin) / 1;
+
+            const targetMax = activeMax + padding;
+            const targetMin = activeMin - padding;
+
+            if (maxHigh < targetMax) {
+                maxHigh = targetMax;
+            }
+            if (minLow > targetMin) {
+                minLow = targetMin;
+            }
+        }
+
         if (!Number.isFinite(minLow) || !Number.isFinite(maxHigh) || minLow === maxHigh) {
             minLow = minLow - 1;
             maxHigh = maxHigh + 1;
@@ -1034,6 +1081,12 @@ const TradingBotMonitor: Component = () => {
 
                 {/* Monitor Grid */}
                 <div class="monitor-grid">
+                    {/* Trade History */}
+                    <div class="trade-section">
+                        <div class="section-header">
+                            <h3>Trade History</h3>
+                        </div>
+                    </div>
                     {/* K-line Chart */}
                     <div class="chart-section">
                         <div class="section-header">
@@ -1057,7 +1110,10 @@ const TradingBotMonitor: Component = () => {
                     {/* Spread Chart */}
                     <div class="spread-section">
                         <div class="section-header">
-                            <h3>Best Bid/Ask Spread (last ~60s)</h3>
+                            <h3>Best Bid/Ask Spread</h3>
+                            <div class="current-price">
+                                <span>last ~ {spreadHistory().length / 10}s</span>
+                            </div>
                         </div>
                         <div
                             class="spread-wrapper"
@@ -1074,12 +1130,11 @@ const TradingBotMonitor: Component = () => {
                         <div class="section-header">
                             <h3>Order Book</h3>
                             <div class="order-count">
-                                <span>{orders().filter(o => { o.side === 'SELL' }).length || 0} / {orders().filter(o => { o.side === 'BUY' }).length || 0}</span>
+                                <span>{orders().length || 0}</span>
                             </div>
                         </div>
                         <div class="orderbook-grid">
                             <div class="orderbook-side asks">
-                                {/* <div class="orderbook-head">Asks (20)</div> */}
                                 <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
                                     <For each={(orderBook()?.asks || [])
                                         .map(l => ({ ...l, qtyNum: Number(l.quantity) }))
@@ -1094,16 +1149,14 @@ const TradingBotMonitor: Component = () => {
                                                         width: `${computeOBWidth(level.qtyNum, 'ask')}%`,
                                                     }}
                                                 />
-                                                <For each={orders().filter(o => o.side === 'SELL' && Number(o.price) === Number(level.price))}>
-                                                    {(order) => (
-                                                        <div
-                                                            class="ob-order-bar ask"
-                                                            style={{
-                                                                width: `${computeOrderWidth(Number(order.quantity), maxAskQty())}%`,
-                                                            }}
-                                                        />
-                                                    )}
-                                                </For>
+                                                <Show when={orderQtyAtPrice('SELL', Number(level.price)) > 0}>
+                                                    <div
+                                                        class="ob-order-bar ask"
+                                                        style={{
+                                                            width: `${computeOrderWidth(orderQtyAtPrice('SELL', Number(level.price)), maxAskQty())}%`,
+                                                        }}
+                                                    />
+                                                </Show>
                                                 <span class="price ask">{Number(level.price).toFixed(fractionDigits())}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
@@ -1111,6 +1164,11 @@ const TradingBotMonitor: Component = () => {
                                     </For>
                                 </Show>
                             </div>
+
+                            <div class="orderbook-side mid">
+                                <h3>{currentPrice().toFixed(fractionDigits())}</h3>
+                            </div>
+
                             <div class="orderbook-side bids">
                                 <Show when={orderBook()} fallback={<div class="empty-orders">No data</div>}>
                                     <For each={(orderBook()?.bids || [])
@@ -1125,23 +1183,20 @@ const TradingBotMonitor: Component = () => {
                                                         width: `${computeOBWidth(level.qtyNum, 'bid')}%`,
                                                     }}
                                                 />
-                                                <For each={orders().filter(o => o.side === 'BUY' && Number(o.price) === Number(level.price))}>
-                                                    {(order) => (
-                                                        <div
-                                                            class="ob-order-bar bid"
-                                                            style={{
-                                                                width: `${computeOrderWidth(Number(order.quantity), maxBidQty())}%`,
-                                                            }}
-                                                        />
-                                                    )}
-                                                </For>
+                                                <Show when={orderQtyAtPrice('BUY', Number(level.price)) > 0}>
+                                                    <div
+                                                        class="ob-order-bar bid"
+                                                        style={{
+                                                            width: `${computeOrderWidth(orderQtyAtPrice('BUY', Number(level.price)), maxBidQty())}%`,
+                                                        }}
+                                                    />
+                                                </Show>
                                                 <span class="price bid">{Number(level.price).toFixed(fractionDigits())}</span>
                                                 <span class="qty">{level.quantity}</span>
                                             </div>
                                         )}
                                     </For>
                                 </Show>
-                                {/* <div class="orderbook-head">Bids (20)</div> */}
                             </div>
                         </div>
                     </div>
@@ -1274,7 +1329,7 @@ const TradingBotMonitor: Component = () => {
 
                 .monitor-grid {
                     display: grid;
-                    grid-template-columns: 1fr 300px;
+                    grid-template-columns: 200px 1fr 300px;
                     grid-template-rows: 1fr 200px;
                     grid-gap: 12px;
                 }
@@ -1285,8 +1340,17 @@ const TradingBotMonitor: Component = () => {
                     }
                 }
 
-                .chart-section {
+                .trade-section {
                     grid-column: 1 / span 1;
+                    grid-row: 1 / span 2;
+                    background: var(--surface);
+                    border-radius: var(--radius-lg);
+                    border: 1px solid var(--border);
+                    overflow: hidden;
+                }
+
+                .chart-section {
+                    grid-column: 2 / span 1;
                     grid-row: 1 / span 1;
                     height: 450px;
                     background: var(--surface);
@@ -1296,7 +1360,7 @@ const TradingBotMonitor: Component = () => {
                 }
 
                 .orders-section {
-                    grid-column: 2 / span 1;
+                    grid-column: 3 / span 1;
                     grid-row: 1 / span 2;
                     background: var(--surface);
                     border-radius: var(--radius-lg);
@@ -1305,7 +1369,7 @@ const TradingBotMonitor: Component = () => {
                 }
 
                 .spread-section {
-                    grid-column: 1 / span 1;
+                    grid-column: 2 / span 1;
                     grid-row: 2 / span 1;
                     background: var(--surface);
                     border: 1px solid var(--border);
@@ -1384,7 +1448,7 @@ const TradingBotMonitor: Component = () => {
 
                 .orderbook-grid {
                     display: grid;
-                    grid-template-rows: 1fr 1fr;
+                    grid-template-rows: 1fr 30px 1fr;
                     height: 600px;
                     border-top: 1px solid var(--border);
                 }
@@ -1404,6 +1468,13 @@ const TradingBotMonitor: Component = () => {
 
                 .orderbook-side.bids {
                     background: transparent;
+                    justify-content: flex-start; /* align asks to bottom */
+                }
+
+                .orderbook-side.mid {
+                    padding: 0px 10px;
+                    display: flex;
+                    align-items: flex-start;
                 }
 
                 .orderbook-head {
