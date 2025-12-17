@@ -17,7 +17,9 @@ const TradingBotMonitor: Component = () => {
 
     let chartContainer!: HTMLDivElement;
     let canvasEl: HTMLCanvasElement | null = null;
+    let spreadCanvasEl: HTMLCanvasElement | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let spreadWrapperEl: HTMLDivElement | null = null;
 
     const candleByTime = new Map<number, Candle>();
     let flushScheduled = false;
@@ -42,6 +44,7 @@ const TradingBotMonitor: Component = () => {
     const [lastPrice, setLastPrice] = createSignal<number>(0);
     const [orders, setOrders] = createSignal<Order[]>([]);
     const [orderBook, setOrderBook] = createSignal<OrderBook | null>(null);
+    const [spreadHistory, setSpreadHistory] = createSignal<{ t: number; s: number }[]>([]);
     const [maxAskQty, setMaxAskQty] = createSignal<number>(1);
     const [maxBidQty, setMaxBidQty] = createSignal<number>(1);
     const [connected, setConnected] = createSignal<boolean>(false);
@@ -230,6 +233,7 @@ const TradingBotMonitor: Component = () => {
         setHasCandles(false);
         setCandles([]);
         drawChart('clearChart');
+        drawSpreadChart();
     };
 
     const normalizeCandleTimestampSeconds = (raw: unknown): number => {
@@ -302,6 +306,7 @@ const TradingBotMonitor: Component = () => {
 
         const data = candles();
         const activeOrders = orders();
+        const book = orderBook();
         if (!data.length) return;
 
         const paddingLeft = Math.floor(12 * dpr);
@@ -448,15 +453,6 @@ const TradingBotMonitor: Component = () => {
 
         // Best Bid/Ask first level lines + tags
         const drawTag = (y: number, label: string, value: number, labelColor: string) => {
-            ctx.setLineDash([4 * dpr, 2 * dpr]);
-            ctx.strokeStyle = labelColor;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(paddingLeft, y);
-            ctx.lineTo(paddingLeft + plotW, y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
             const priceTxt = value.toFixed(8);
             const labelTxt = label;
             ctx.font = `${Math.floor(11 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif`;
@@ -494,7 +490,7 @@ const TradingBotMonitor: Component = () => {
         };
 
         const price = currentPrice();
-        const book = orderBook();
+        // const book = orderBook();
         if (book) {
             let bestBid = Number.NEGATIVE_INFINITY;
             let bestAsk = Number.POSITIVE_INFINITY;
@@ -590,6 +586,136 @@ const TradingBotMonitor: Component = () => {
         }
     };
 
+    const ensureSpreadCanvas = () => {
+        if (!spreadWrapperEl) return;
+        if (spreadCanvasEl) {
+            if (spreadCanvasEl.parentElement !== spreadWrapperEl) {
+                spreadWrapperEl.appendChild(spreadCanvasEl);
+            }
+            return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = '120px';
+        canvas.style.display = 'block';
+        spreadCanvasEl = canvas;
+        spreadWrapperEl.appendChild(canvas);
+        resizeSpreadCanvas();
+    };
+
+    const resizeSpreadCanvas = () => {
+        if (!spreadCanvasEl) return;
+        const parent = spreadCanvasEl.parentElement as HTMLElement | null;
+        if (!parent) return;
+        const width = parent.clientWidth;
+        const height = 120;
+        const dpr = window.devicePixelRatio || 1;
+        spreadCanvasEl.width = Math.floor(width * dpr);
+        spreadCanvasEl.height = Math.floor(height * dpr);
+    };
+
+    const drawSpreadChart = () => {
+        if (!spreadCanvasEl) return;
+        const ctx = spreadCanvasEl.getContext('2d');
+        if (!ctx) return;
+        const dpr = window.devicePixelRatio || 1;
+        const width = spreadCanvasEl.width;
+        const height = spreadCanvasEl.height;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        const data = spreadHistory();
+        if (!data.length) return;
+        const padding = 12 * dpr;
+        const plotW = width - padding * 2;
+        const plotH = height - padding * 2;
+        if (plotW <= 0 || plotH <= 0) return;
+        const minSpread = Math.min(...data.map(d => d.s));
+        const maxSpread = Math.max(...data.map(d => d.s));
+        const span = Math.max(1e-9, maxSpread - minSpread);
+        const minT = data[0].t;
+        const maxT = data[data.length - 1].t;
+        const tSpan = Math.max(1, maxT - minT);
+
+        // Y grid lines and labels
+        ctx.strokeStyle = 'rgba(80, 89, 102, 0.25)';
+        ctx.fillStyle = 'rgba(102, 112, 126, 0.85)';
+        ctx.font = `${Math.floor(10 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        const yTicks = 4;
+        const formatSpread = (v: number) => {
+            const abs = Math.abs(v);
+            if (abs >= 1) return v.toFixed(4);
+            if (abs >= 0.001) return v.toFixed(6);
+            return v.toExponential(2);
+        };
+
+
+        const gridRightPadding = 12 * dpr
+
+        // Grid Line
+        for (let i = 0; i <= yTicks; i++) {
+            const frac = i / yTicks;
+            const val = maxSpread - frac * span;
+            const y = padding + frac * plotH;
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(padding + plotW - 6 * dpr, y - gridRightPadding);
+            ctx.stroke();
+            const label = formatSpread(val);
+            const boxW = ctx.measureText(label).width + 8 * dpr;
+            ctx.fillStyle = 'rgba(248, 250, 252, 0.9)';
+            ctx.fillText(label, padding + plotW - boxW - gridRightPadding, y);
+        }
+
+        // History Line
+        ctx.strokeStyle = 'rgba(246, 212, 59, 0.8)';
+        ctx.lineWidth = Math.max(1, Math.floor(1 * dpr));
+        ctx.beginPath();
+        data.forEach((pt, i) => {
+            const x = padding + ((pt.t - minT) / tSpan) * plotW;
+            const y = padding + (1 - (pt.s - minSpread) / span) * plotH;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Last value dashed line + tag
+        const last = data[data.length - 1];
+        // const lastX = padding + ((last.t - minT) / tSpan) * plotW;
+        const lastY = padding + (1 - (last.s - minSpread) / span) * plotH;
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.strokeStyle = 'rgba(246, 212, 59, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(padding, lastY);
+        ctx.lineTo(padding + plotW, lastY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Current Label
+        const tag = `${last.s.toFixed(8)}`;
+        const boxW = ctx.measureText(tag).width + 8 * dpr;
+        const boxH = 16 * dpr;
+        const boxX = padding + plotW - boxW;
+        const boxY = lastY - boxH / 2;
+        ctx.fillStyle = 'rgba(246, 212, 59, 0.9)';
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(boxX, boxY, boxW, boxH, 5);
+            ctx.fill();
+        } else {
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+        }
+        ctx.fillStyle = '#0b1525';
+        ctx.fillText(tag, boxX + 4 * dpr, lastY);
+
+        // Title
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+        ctx.font = `${Math.floor(10 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif`;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Spread (${data.length} pts)`, padding, padding);
+    };
+
     const scheduleFlush = () => {
         if (flushScheduled) return;
         flushScheduled = true;
@@ -611,10 +737,28 @@ const TradingBotMonitor: Component = () => {
         });
     };
 
-    // Initialize chart on mount
+    // Initialize charts and spread sampler on mount
     onMount(() => {
         ensureCanvas();
+
+        const sampler = window.setInterval(() => {
+            const book = orderBook();
+            if (!book) return;
+            const bestBid = book.bids?.[0] ? Number(book.bids[0].price) : NaN;
+            const bestAsk = book.asks?.[0] ? Number(book.asks[0].price) : NaN;
+            if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk)) return;
+            const spread = bestAsk - bestBid;
+            const now = Date.now();
+            setSpreadHistory((prev) => {
+                const next = [...prev, { t: now, s: spread }];
+                // keep last 600 points (~60s at 100ms)
+                if (next.length > 600) next.splice(0, next.length - 600);
+                return next;
+            });
+        }, 100);
+
         onCleanup(() => {
+            window.clearInterval(sampler);
             if (resizeObserver) {
                 resizeObserver.disconnect();
                 resizeObserver = null;
@@ -622,6 +766,10 @@ const TradingBotMonitor: Component = () => {
             if (canvasEl) {
                 canvasEl.remove();
                 canvasEl = null;
+            }
+            if (spreadCanvasEl) {
+                spreadCanvasEl.remove();
+                spreadCanvasEl = null;
             }
         });
     });
@@ -639,6 +787,20 @@ const TradingBotMonitor: Component = () => {
         drawChart('priceEffect');
     });
 
+    // Resize spread canvas on window resize
+    createEffect(() => {
+        if (spreadCanvasEl) {
+            resizeSpreadCanvas();
+            drawSpreadChart();
+        }
+    });
+
+    // Redraw spread chart when history changes
+    createEffect(() => {
+        spreadHistory();
+        drawSpreadChart();
+    });
+
     // WebSocket connection effect
     createEffect(() => {
         const keyId = selectedKeyId();
@@ -653,6 +815,7 @@ const TradingBotMonitor: Component = () => {
         setError('');
         setConnected(false);
         setOrders([]);
+        setSpreadHistory([]);
         untrack(() => clearChart()); // ensure fresh chart before resubscribe
 
         // Connect to WebSocket
@@ -856,6 +1019,21 @@ const TradingBotMonitor: Component = () => {
                         </div>
                     </div>
 
+                    {/* Spread Chart */}
+                    <div class="spread-section">
+                        <div class="section-header">
+                            <h3>Best Bid/Ask Spread (last ~60s)</h3>
+                        </div>
+                        <div
+                            class="spread-wrapper"
+                            ref={(el) => {
+                                spreadWrapperEl = el;
+                                ensureSpreadCanvas();
+                                drawSpreadChart();
+                            }}
+                        />
+                    </div>
+
                     {/* Order Book */}
                     <div class="orders-section">
                         <div class="section-header">
@@ -871,7 +1049,7 @@ const TradingBotMonitor: Component = () => {
                                     <For each={(orderBook()?.asks || [])
                                         .map(l => ({ ...l, qtyNum: Number(l.quantity) }))
                                         .sort((a, b) => Number(a.price) - Number(b.price))
-                                        .slice(-15)
+                                        .slice(0, 15)
                                         .reverse()}>
                                         {(level, _) => (
                                             <div class="ob-row">
@@ -1061,8 +1239,9 @@ const TradingBotMonitor: Component = () => {
 
                 .monitor-grid {
                     display: grid;
-                    grid-template-columns: 1fr 350px;
-                    gap: 24px;
+                    grid-template-columns: 1fr 300px;
+                    grid-template-rows: 1fr 200px;
+                    grid-gap: 12px;
                 }
 
                 @media (max-width: 1024px) {
@@ -1071,16 +1250,40 @@ const TradingBotMonitor: Component = () => {
                     }
                 }
 
-                .chart-section,
-                .orders-section {
+                .chart-section {
+                    grid-column: 1 / span 1;
+                    grid-row: 1 / span 1;
+                    height: 450px;
                     background: var(--surface);
                     border-radius: var(--radius-lg);
                     border: 1px solid var(--border);
                     overflow: hidden;
                 }
 
+                .orders-section {
+                    grid-column: 2 / span 1;
+                    grid-row: 1 / span 2;
+                    background: var(--surface);
+                    border-radius: var(--radius-lg);
+                    border: 1px solid var(--border);
+                    overflow: hidden;
+                }
+
+                .spread-section {
+                    grid-column: 1 / span 1;
+                    grid-row: 2 / span 1;
+                    background: var(--surface);
+                    border: 1px solid var(--border);
+                    border-radius: var(--radius-lg);
+                }
+
+                .spread-wrapper {
+                    height: 120px;
+                }
+
                 .section-header {
                     display: flex;
+                    height: 50px;
                     justify-content: space-between;
                     align-items: center;
                     padding: 16px 20px;
