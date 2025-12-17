@@ -53,6 +53,7 @@ const TradingBotMonitor: Component = () => {
     const [error, setError] = createSignal<string>('');
     const [hasCandles, setHasCandles] = createSignal<boolean>(false);
     const [candles, setCandles] = createSignal<Candle[]>([]);
+    const [tradeHistory, setTradeHistory] = createSignal<Order[]>([]);
 
     const maxFractionDigits = (nums: number[]): number => {
         let maxDigits = 0;
@@ -327,6 +328,13 @@ const TradingBotMonitor: Component = () => {
         const key = Number(price.toFixed(fractionDigits()));
         const grouped = aggregateOrdersByPrice();
         return grouped[side].get(key) || 0;
+    };
+
+    const formatTradeTime = (ts: number) => {
+        const ms = ts > 1e12 ? ts : ts * 1000;
+        const d = new Date(ms);
+        if (Number.isNaN(d.getTime())) return '--:--:--';
+        return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     };
 
     const computeOrderWidth = (qty: number, maxQty: number) => {
@@ -897,6 +905,7 @@ const TradingBotMonitor: Component = () => {
         setError('');
         setConnected(false);
         setOrders([]);
+        setTradeHistory([]);
         setSpreadHistory([]);
         untrack(() => clearChart()); // ensure fresh chart before resubscribe
 
@@ -969,6 +978,15 @@ const TradingBotMonitor: Component = () => {
                     orderData.status === 'FILLED' ||
                     orderData.status === 'CANCELED' ||
                     orderData.status === 'UNKNOWN';
+
+                if (orderData.status === 'PARTIALLY_FILLED' || orderData.status === 'FILLED') {
+                    setTradeHistory((prev) => {
+                        const next = [orderData, ...prev];
+                        if (next.length > 100) next.length = 100;
+                        return next;
+                    });
+                }
+
                 setOrders(prev => {
                     const next = [...prev];
                     const idx = next.findIndex(o => o.orderId === orderData.orderId);
@@ -1085,6 +1103,28 @@ const TradingBotMonitor: Component = () => {
                     <div class="trade-section">
                         <div class="section-header">
                             <h3>Trade History</h3>
+                        </div>
+                        <div class="trade-history">
+                            <Show when={tradeHistory().length > 0} fallback={<div class="empty-orders">No recent trades</div>}>
+                                <div class="trade-head">
+                                    <span>Time</span>
+                                    <span>Price</span>
+                                    <span>Qty</span>
+                                </div>
+                                <div class="trade-list">
+                                    <For each={tradeHistory()}>
+                                        {(order) => (
+                                            <div class="trade-row">
+                                                <span class="trade-time">{formatTradeTime(order.updateTime)}</span>
+                                                <span class={`trade-price ${order.side === 'BUY' ? 'bid' : 'ask'}`}>
+                                                    {Number(order.price).toFixed(fractionDigits())}
+                                                </span>
+                                                <span class="trade-qty">{order.executedQty || order.quantity}</span>
+                                            </div>
+                                        )}
+                                    </For>
+                                </div>
+                            </Show>
                         </div>
                     </div>
                     {/* K-line Chart */}
@@ -1347,6 +1387,58 @@ const TradingBotMonitor: Component = () => {
                     border-radius: var(--radius-lg);
                     border: 1px solid var(--border);
                     overflow: hidden;
+                }
+
+                .trade-history {
+                    display: flex;
+                    flex-direction: column;
+                    height: 600px;
+                }
+
+                .trade-head,
+                .trade-row {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    padding: 8px 12px;
+                    gap: 4px;
+                    font-size: 13px;
+                }
+
+                .trade-head {
+                    color: var(--text-secondary);
+                    border-bottom: 1px solid var(--border);
+                    font-weight: 600;
+                }
+
+                .trade-list {
+                    overflow-y: auto;
+                    flex: 1;
+                }
+
+                .trade-row {
+                    border-bottom: 1px solid var(--border);
+                    font-family: monospace;
+                    background: transparent;
+                }
+
+                .trade-row:last-child {
+                    border-bottom: none;
+                }
+
+                .trade-time {
+                    color: var(--text-secondary);
+                }
+
+                .trade-price.ask {
+                    color: var(--danger);
+                }
+
+                .trade-price.bid {
+                    color: var(--success);
+                }
+
+                .trade-qty {
+                    text-align: right;
                 }
 
                 .chart-section {
