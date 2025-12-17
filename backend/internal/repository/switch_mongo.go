@@ -12,7 +12,7 @@ import (
 	"control_page/internal/model"
 )
 
-const collectionSwitcher = "switcher"
+const collectionSwitcher = "switch"
 
 var _ adaptor.SwitcherRepository = (*SwitcherMongoRepository)(nil)
 

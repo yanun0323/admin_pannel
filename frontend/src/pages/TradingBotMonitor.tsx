@@ -1105,21 +1105,25 @@ const TradingBotMonitor: Component = () => {
                             <h3>Trade History</h3>
                         </div>
                         <div class="trade-history">
+                            <div class="trade-head">
+                                <span>Time</span>
+                                <span>F/P</span>
+                                <span>Price</span>
+                                <span>Qty</span>
+                            </div>
                             <Show when={tradeHistory().length > 0} fallback={<div class="empty-orders">No recent trades</div>}>
-                                <div class="trade-head">
-                                    <span>Time</span>
-                                    <span>Price</span>
-                                    <span>Qty</span>
-                                </div>
                                 <div class="trade-list">
                                     <For each={tradeHistory()}>
                                         {(order) => (
-                                            <div class="trade-row">
+                                            <div class={`trade-row ${order.side === 'BUY' ? 'flash-bid' : 'flash-ask'}`}>
                                                 <span class="trade-time">{formatTradeTime(order.updateTime)}</span>
+                                                <span class="trade-type">
+                                                    {order.status === 'FILLED' ? 'F' : order.status === 'PARTIALLY_FILLED' ? 'P' : '-'}
+                                                </span>
                                                 <span class={`trade-price ${order.side === 'BUY' ? 'bid' : 'ask'}`}>
                                                     {Number(order.price).toFixed(fractionDigits())}
                                                 </span>
-                                                <span class="trade-qty">{order.executedQty || order.quantity}</span>
+                                                <span class="trade-qty">{order.executedQty || '-'} / {order.quantity || '-'}</span>
                                             </div>
                                         )}
                                     </For>
@@ -1369,7 +1373,7 @@ const TradingBotMonitor: Component = () => {
 
                 .monitor-grid {
                     display: grid;
-                    grid-template-columns: 200px 1fr 300px;
+                    grid-template-columns: 300px 1fr 300px;
                     grid-template-rows: 1fr 200px;
                     grid-gap: 12px;
                 }
@@ -1398,16 +1402,25 @@ const TradingBotMonitor: Component = () => {
                 .trade-head,
                 .trade-row {
                     display: grid;
-                    grid-template-columns: 1fr 1fr 1fr;
+                    grid-template-columns: 1.3fr 15px 1.1fr 1.5fr;
                     padding: 8px 12px;
                     gap: 4px;
-                    font-size: 13px;
+                    font-size: 10px;
                 }
 
                 .trade-head {
                     color: var(--text-secondary);
                     border-bottom: 1px solid var(--border);
                     font-weight: 600;
+                    text-align: center;
+                }
+
+                .trade-head span {
+                    text-align: center;
+                }
+
+                .trade-row span {
+                    text-align: center;
                 }
 
                 .trade-list {
@@ -1419,6 +1432,14 @@ const TradingBotMonitor: Component = () => {
                     border-bottom: 1px solid var(--border);
                     font-family: monospace;
                     background: transparent;
+                }
+
+                .trade-row.flash-ask {
+                    animation: fade-ask 2s ease-out forwards;
+                }
+
+                .trade-row.flash-bid {
+                    animation: fade-bid 2s ease-out forwards;
                 }
 
                 .trade-row:last-child {
@@ -1437,8 +1458,22 @@ const TradingBotMonitor: Component = () => {
                     color: var(--success);
                 }
 
+                .trade-type {
+                    font-weight: 700;
+                }
+
                 .trade-qty {
                     text-align: right;
+                }
+
+                @keyframes fade-ask {
+                    0% { background: rgba(239, 68, 68, 0.12); }
+                    100% { background: transparent; }
+                }
+
+                @keyframes fade-bid {
+                    0% { background: rgba(34, 197, 94, 0.12); }
+                    100% { background: transparent; }
                 }
 
                 .chart-section {
